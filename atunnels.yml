@@ -1,0 +1,35 @@
+server:
+  host: "0.0.0.0"
+  http_port: 80
+  https_port: 443
+  tcp_port_start: 10000
+  ws_port_start: 11000
+  api_port: 8080
+  mcp_port: 27200
+  ssh_port: 2222
+  domain: "your-domain.com"
+  metrics_enabled: true
+
+  tls:
+    enabled: true
+    email: "admin@your-domain.com"
+    cert_cache: "/var/lib/atunnels/certs"
+    auto_tls: true
+
+  auth:
+    api_keys:
+      - "at_sk_your_api_key_here"
+    ssh_keys: []
+    mcp_token: "mcp_your_token_here"
+    admins:
+      - "admin"
+
+  storage:
+    type: "memory"
+    path: "/var/lib/atunnels/db"
+
+  limits:
+    max_tunnels: 100
+    max_conns_per_tunnel: 1000
+    rate_limit: 1000
+    rate_limit_period: 60

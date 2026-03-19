@@ -1,0 +1,52 @@
+server:
+  host: "0.0.0.0"
+  http_port: 80
+  https_port: 443
+  tcp_port_start: 10000
+  ws_port_start: 11000
+  api_port: 8080
+  mcp_port: 27200
+  ssh_port: 2222
+  domain: "localhost"
+  metrics_enabled: true
+
+  tls:
+    enabled: false
+    email: ""
+    cert_cache: ""
+    auto_tls: false
+
+  auth:
+    api_keys:
+      - "at_sk_test_key"
+    ssh_keys: []
+    mcp_token: ""
+    admins:
+      - "admin"
+
+  storage:
+    type: "memory"
+    path: ""
+
+  limits:
+    max_tunnels: 10
+    max_conns_per_tunnel: 100
+    rate_limit: 100
+    rate_limit_period: 60
+
+client:
+  server_addr: "localhost:8080"
+  token: "at_sk_test_key"
+  reconnect_interval: 5s
+
+tunnels:
+  - name: "webhook-stripe"
+    protocol: "http"
+    local_addr: "localhost:3000"
+    subdomain: "stripe-vgad"
+    timeout: 30s
+
+  - name: "postgres-db"
+    protocol: "tcp"
+    local_addr: "localhost:5432"
+    remote_port: 15432

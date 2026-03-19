@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  atunnels:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: atunnels/server:latest
+    container_name: atunnels
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+      - "2222:2222"
+      - "27200:27200"
+      - "10000-10100:10000-10100"
+    volumes:
+      - ./atunnels.yml:/etc/atunnels/atunnels.yml:ro
+      - atunnels-data:/var/lib/atunnels
+    environment:
+      - ATUNNELS_CONFIG=/etc/atunnels/atunnels.yml
+    restart: unless-stopped
+    networks:
+      - atunnels-net
+
+  atunnels-client:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: atunnels/client:latest
+    container_name: atunnels-client
+    volumes:
+      - ./client.yml:/etc/atunnels/client.yml:ro
+    environment:
+      - ATUNNELS_CONFIG=/etc/atunnels/client.yml
+    restart: unless-stopped
+    networks:
+      - atunnels-net
+
+volumes:
+  atunnels-data:
+
+networks:
+  atunnels-net:
+    driver: bridge
