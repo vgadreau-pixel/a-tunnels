@@ -69,6 +69,7 @@ func main() {
 		Domain:             cfg.Server.Domain,
 		RateLimit:          cfg.Server.Limits.RateLimit,
 		ShortenerRateLimit: cfg.Server.Limits.ShortenerLimit,
+		ShortenerPeriod:    int(cfg.Server.Limits.ShortenerPeriod),
 		Shortener: gateway.GatewayShortenerConfig{
 			Enabled:     cfg.Server.Shortener.Enabled,
 			DefaultTTL:  cfg.Server.Shortener.DefaultTTL,

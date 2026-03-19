@@ -128,12 +128,12 @@ server:
     default_ttl: 24      # TTL par défaut (heures)
     max_ttl: 720         # TTL maximum (heures)
     max_length: 8        # Longueur du code court
-    base_path: "/s/"     # Chemin pour les URLs courtes
+    base_path: "/s/"     # Chemin pour les URLs courtes (doit correspondre au routeur)
     cleanup_freq: 10      # Fréquence nettoyage (minutes)
 
   limits:
-    shortener_limit: 10   # Création d'URLs max par heure/IP
-    shortener_period: 60   # Période en minutes
+    shortener_limit: 10   # Création d'URLs max par période/IP
+    shortener_period: 60  # Période pour le rate limiting (minutes)
 ```
 
 ### Storage
@@ -146,6 +146,8 @@ server:
     type: file
     path: ./data/atunnels.db
 ```
+
+**Note:** Les données du shortener sont sauvegardées dans `<répertoire_du_fichier>/shortener.json` (ex: `./data/shortener.json`).
 
 ## Docker
 
