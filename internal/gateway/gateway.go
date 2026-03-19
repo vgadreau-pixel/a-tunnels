@@ -143,6 +143,16 @@ type GatewayConfig struct {
 	AllowedOrigins []string
 	AllowedIPs     []string
 	AuthToken      string
+	Shortener      GatewayShortenerConfig
+}
+
+type GatewayShortenerConfig struct {
+	Enabled     bool
+	DefaultTTL  int
+	MaxTTL      int
+	MaxLength   int
+	BasePath    string
+	CleanupFreq int
 }
 
 type ClientConnection struct {
@@ -154,12 +164,50 @@ type ClientConnection struct {
 }
 
 func NewGateway(cfg *GatewayConfig, mgr tunnel.Manager) *Gateway {
-	return &Gateway{
+	s := shortener.New()
+
+	g := &Gateway{
 		tunnelMgr:   mgr,
-		shortener:   shortener.New(),
+		shortener:   s,
 		config:      cfg,
 		connections: make(map[string]*ClientConnection),
 	}
+
+	if cfg.Shortener.CleanupFreq > 0 {
+		go g.startCleanupTicker()
+	}
+
+	return g
+}
+
+func NewGatewayWithStorage(cfg *GatewayConfig, mgr tunnel.Manager, storage shortener.Storage) *Gateway {
+	s := shortener.NewWithStorage(storage)
+
+	g := &Gateway{
+		tunnelMgr:   mgr,
+		shortener:   s,
+		config:      cfg,
+		connections: make(map[string]*ClientConnection),
+	}
+
+	if cfg.Shortener.CleanupFreq > 0 {
+		go g.startCleanupTicker()
+	}
+
+	return g
+}
+
+func (g *Gateway) startCleanupTicker() {
+	if g.config.Shortener.CleanupFreq <= 0 {
+		return
+	}
+
+	ticker := time.NewTicker(time.Duration(g.config.Shortener.CleanupFreq) * time.Minute)
+	go func() {
+		for range ticker.C {
+			g.shortener.Cleanup()
+		}
+	}()
 }
 
 func (g *Gateway) StartHTTP(ctx context.Context) error {
@@ -371,12 +419,16 @@ func (g *Gateway) handleShortenURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ttl := 24 * time.Hour
-	if req.TTL > 0 {
-		ttl = time.Duration(req.TTL) * time.Hour
+	// Use provided TTL or default, limited by max allowed TTL from config
+	ttlHours := g.config.Shortener.DefaultTTL
+	if req.TTL > 0 && req.TTL <= g.config.Shortener.MaxTTL {
+		// Respect the shorter limit between user request and server config
+		ttlHours = req.TTL
+	} else if req.TTL > g.config.Shortener.MaxTTL {
+		ttlHours = g.config.Shortener.MaxTTL
 	}
 
-	url, err := g.shortener.Create(req.URL, ttl)
+	url, err := g.shortener.Create(req.URL, time.Duration(ttlHours)*time.Hour)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -389,7 +441,7 @@ func (g *Gateway) handleShortenURL(w http.ResponseWriter, r *http.Request) {
 
 	resp := ShortenResponse{
 		ShortCode: url.ShortCode,
-		ShortURL:  fmt.Sprintf("%s://%s/s/%s", scheme, r.Host, url.ShortCode),
+		ShortURL:  fmt.Sprintf("%s://%s%s%s", scheme, r.Host, g.config.Shortener.BasePath, url.ShortCode),
 		Original:  url.Original,
 		ExpiresAt: url.ExpiresAt.Unix(),
 	}

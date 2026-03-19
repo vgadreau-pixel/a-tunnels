@@ -9,6 +9,14 @@ import (
 	"time"
 )
 
+type Storage interface {
+	SaveURL(url *URL) error
+	GetURL(id string) (*URL, error)
+	DeleteURL(id string) error
+	ListURLs() ([]*URL, error)
+	Close() error
+}
+
 type URL struct {
 	ID        string    `json:"id"`
 	Original  string    `json:"original"`
@@ -22,13 +30,35 @@ type Shortener struct {
 	urls      map[string]*URL
 	codeIndex map[string]string
 	mu        sync.RWMutex
+	storage   Storage
 }
 
 func New() *Shortener {
 	return &Shortener{
 		urls:      make(map[string]*URL),
 		codeIndex: make(map[string]string),
+		storage:   nil,
 	}
+}
+
+func NewWithStorage(storage Storage) *Shortener {
+	s := &Shortener{
+		urls:      make(map[string]*URL),
+		codeIndex: make(map[string]string),
+		storage:   storage,
+	}
+
+	// Load existing URLs from storage
+	if storage != nil {
+		if urls, err := storage.ListURLs(); err == nil {
+			for _, url := range urls {
+				s.urls[url.ID] = url
+				s.codeIndex[url.ShortCode] = url.ID
+			}
+		}
+	}
+
+	return s
 }
 
 func (s *Shortener) encodeCode(id string) string {
@@ -61,6 +91,12 @@ func (s *Shortener) Create(original string, ttl time.Duration) (*URL, error) {
 	s.urls[id] = url
 	s.codeIndex[code] = id
 
+	// Persist to storage if configured
+	if s.storage != nil {
+		// Store a copy so we don't risk corruption if original changes
+		_ = s.storage.SaveURL(url)
+	}
+
 	return url, nil
 }
 
@@ -82,9 +118,9 @@ func (s *Shortener) Get(id string) (*URL, error) {
 
 func (s *Shortener) GetByCode(code string) (*URL, error) {
 	s.mu.RLock()
-	id, ok := s.codeIndex[code]
-	s.mu.RUnlock()
+	defer s.mu.RUnlock()
 
+	id, ok := s.codeIndex[code]
 	if !ok {
 		return nil, fmt.Errorf("short code not found: %s", code)
 	}
@@ -112,6 +148,11 @@ func (s *Shortener) Resolve(code string) (string, error) {
 
 	url.Clicks++
 
+	// Persist updated click count if storage available
+	if s.storage != nil {
+		_ = s.storage.SaveURL(url)
+	}
+
 	return url.Original, nil
 }
 
@@ -126,6 +167,11 @@ func (s *Shortener) Delete(id string) error {
 
 	delete(s.urls, id)
 	delete(s.codeIndex, url.ShortCode)
+
+	// Remove from storage if configured
+	if s.storage != nil {
+		_ = s.storage.DeleteURL(id)
+	}
 
 	return nil
 }
@@ -151,6 +197,11 @@ func (s *Shortener) Cleanup() {
 		if now.After(url.ExpiresAt) {
 			delete(s.urls, id)
 			delete(s.codeIndex, url.ShortCode)
+
+			// Remove expired entry from storage if available
+			if s.storage != nil {
+				_ = s.storage.DeleteURL(id)
+			}
 		}
 	}
 }

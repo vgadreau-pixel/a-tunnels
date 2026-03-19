@@ -7,12 +7,14 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/a-tunnels/a-tunnels/internal/api"
 	"github.com/a-tunnels/a-tunnels/internal/config"
 	"github.com/a-tunnels/a-tunnels/internal/gateway"
 	"github.com/a-tunnels/a-tunnels/internal/mcp"
+	"github.com/a-tunnels/a-tunnels/internal/shortener"
 	"github.com/a-tunnels/a-tunnels/internal/ssh"
 	"github.com/a-tunnels/a-tunnels/internal/tunnel"
 )
@@ -45,13 +47,35 @@ func main() {
 
 	tunnelMgr := tunnel.NewManager()
 
-	gw := gateway.NewGateway(&gateway.GatewayConfig{
+	var shortenerStorage shortener.Storage
+	if cfg.Server.Shortener.Enabled {
+		// Initialize shortener storage based on server storage config
+		if cfg.Server.Storage.Type == "file" && cfg.Server.Storage.Path != "" {
+			shortenerPath := filepath.Join(filepath.Dir(cfg.Server.Storage.Path), "shortener.json")
+			storage, err := shortener.NewFileStorage(shortenerPath)
+			if err != nil {
+				log.Printf("Failed to create shortener file storage: %v, using memory storage", err)
+			} else {
+				shortenerStorage = storage
+			}
+		}
+	}
+
+	gw := gateway.NewGatewayWithStorage(&gateway.GatewayConfig{
 		HTTPPort:  cfg.Server.HTTPPort,
 		HTTPSPort: cfg.Server.HTTPSPort,
 		TCPPort:   cfg.Server.TCPPortStart,
 		WSPort:    cfg.Server.WSPortStart,
 		Domain:    cfg.Server.Domain,
-	}, tunnelMgr)
+		Shortener: gateway.GatewayShortenerConfig{
+			Enabled:     cfg.Server.Shortener.Enabled,
+			DefaultTTL:  cfg.Server.Shortener.DefaultTTL,
+			MaxTTL:      cfg.Server.Shortener.MaxTTL,
+			MaxLength:   cfg.Server.Shortener.MaxLength,
+			BasePath:    cfg.Server.Shortener.BasePath,
+			CleanupFreq: cfg.Server.Shortener.CleanupFreq,
+		},
+	}, tunnelMgr, shortenerStorage)
 
 	if err := gw.StartHTTP(ctx); err != nil {
 		log.Printf("HTTP gateway failed: %v", err)

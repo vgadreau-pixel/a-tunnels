@@ -14,21 +14,22 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Host           string        `yaml:"host"`
-	HTTPPort       int           `yaml:"http_port"`
-	HTTPSPort      int           `yaml:"https_port"`
-	TCPPortStart   int           `yaml:"tcp_port_start"`
-	WSPortStart    int           `yaml:"ws_port_start"`
-	APIPort        int           `yaml:"api_port"`
-	MCPPort        int           `yaml:"mcp_port"`
-	MCPToken       string        `yaml:"mcp_token"`
-	SSHPort        int           `yaml:"ssh_port"`
-	TLS            TLSConfig     `yaml:"tls"`
-	Auth           AuthConfig    `yaml:"auth"`
-	Storage        StorageConfig `yaml:"storage"`
-	Limits         LimitsConfig  `yaml:"limits"`
-	Domain         string        `yaml:"domain"`
-	MetricsEnabled bool          `yaml:"metrics_enabled"`
+	Host           string          `yaml:"host"`
+	HTTPPort       int             `yaml:"http_port"`
+	HTTPSPort      int             `yaml:"https_port"`
+	TCPPortStart   int             `yaml:"tcp_port_start"`
+	WSPortStart    int             `yaml:"ws_port_start"`
+	APIPort        int             `yaml:"api_port"`
+	MCPPort        int             `yaml:"mcp_port"`
+	MCPToken       string          `yaml:"mcp_token"`
+	SSHPort        int             `yaml:"ssh_port"`
+	TLS            TLSConfig       `yaml:"tls"`
+	Auth           AuthConfig      `yaml:"auth"`
+	Storage        StorageConfig   `yaml:"storage"`
+	Shortener      ShortenerConfig `yaml:"shortener"`
+	Limits         LimitsConfig    `yaml:"limits"`
+	Domain         string          `yaml:"domain"`
+	MetricsEnabled bool            `yaml:"metrics_enabled"`
 }
 
 type TLSConfig struct {
@@ -49,6 +50,15 @@ type StorageConfig struct {
 	Type     string `yaml:"type"`
 	Path     string `yaml:"path"`
 	RedisURL string `yaml:"redis_url,omitempty"`
+}
+
+type ShortenerConfig struct {
+	Enabled     bool   `yaml:"enabled"`
+	DefaultTTL  int    `yaml:"default_ttl"`  // TTL par défaut (en heures)
+	MaxTTL      int    `yaml:"max_ttl"`      // TTL maximum autorisé (en heures)
+	MaxLength   int    `yaml:"max_length"`   // Longueur maximale du code
+	BasePath    string `yaml:"base_path"`    // Chemin de base pour les URLs courtes
+	CleanupFreq int    `yaml:"cleanup_freq"` // Fréquence de nettoyage (en minutes)
 }
 
 type LimitsConfig struct {
@@ -130,6 +140,21 @@ func (c *Config) setDefaults() {
 	}
 	if c.Server.SSHPort == 0 {
 		c.Server.SSHPort = 2222
+	}
+	if c.Server.Shortener.DefaultTTL == 0 {
+		c.Server.Shortener.DefaultTTL = 24
+	}
+	if c.Server.Shortener.MaxTTL == 0 {
+		c.Server.Shortener.MaxTTL = 720
+	}
+	if c.Server.Shortener.MaxLength == 0 {
+		c.Server.Shortener.MaxLength = 8
+	}
+	if c.Server.Shortener.BasePath == "" {
+		c.Server.Shortener.BasePath = "/s/"
+	}
+	if c.Server.Shortener.CleanupFreq == 0 {
+		c.Server.Shortener.CleanupFreq = 10
 	}
 	if c.Server.Limits.MaxTunnels == 0 {
 		c.Server.Limits.MaxTunnels = 100
