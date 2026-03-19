@@ -66,6 +66,8 @@ type LimitsConfig struct {
 	MaxConnsPerTunnel int   `yaml:"max_conns_per_tunnel"`
 	RateLimit         int   `yaml:"rate_limit"`
 	RateLimitPeriod   int64 `yaml:"rate_limit_period"`
+	ShortenerLimit    int   `yaml:"shortener_limit"`  // Limit for shortener creation
+	ShortenerPeriod   int64 `yaml:"shortener_period"` // Period for shortener (in minutes)
 }
 
 type ClientConfig struct {
@@ -155,6 +157,12 @@ func (c *Config) setDefaults() {
 	}
 	if c.Server.Shortener.CleanupFreq == 0 {
 		c.Server.Shortener.CleanupFreq = 10
+	}
+	if c.Server.Limits.ShortenerLimit == 0 {
+		c.Server.Limits.ShortenerLimit = 10
+	}
+	if c.Server.Limits.ShortenerPeriod == 0 {
+		c.Server.Limits.ShortenerPeriod = 60 // 60 minutes
 	}
 	if c.Server.Limits.MaxTunnels == 0 {
 		c.Server.Limits.MaxTunnels = 100

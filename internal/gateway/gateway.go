@@ -23,127 +23,113 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: checkOrigin,
 }
 
-func checkOrigin(r *http.Request) bool {
-	origin := r.Header.Get("Origin")
-	if origin == "" {
+type RateLimiter struct {
+	visitors map[string]*Visitor
+	mutex    sync.RWMutex
+	limit    int
+	window   time.Duration
+}
+
+type Visitor struct {
+	Requests int
+	LastSeen time.Time
+}
+
+func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
+	rl := &RateLimiter{
+		visitors: make(map[string]*Visitor),
+		limit:    limit,
+		window:   window,
+	}
+
+	// Start cleanup goroutine to remove old entries
+	go rl.cleanup()
+
+	return rl
+}
+
+func (rl *RateLimiter) Allow(ip string) bool {
+	rl.mutex.Lock()
+	defer rl.mutex.Unlock()
+
+	now := time.Now()
+
+	visitor, exists := rl.visitors[ip]
+	if !exists {
+		// New visitor
+		rl.visitors[ip] = &Visitor{
+			Requests: 1,
+			LastSeen: now,
+		}
 		return true
 	}
 
-	parsedOrigin, err := url.Parse(origin)
-	if err != nil {
+	// Check if we need to reset counters (window passed)
+	if now.Sub(visitor.LastSeen) > rl.window {
+		visitor.Requests = 1
+		visitor.LastSeen = now
+		return true
+	}
+
+	// Check if limit exceeded
+	if visitor.Requests >= rl.limit {
+		// Limit exceeded
 		return false
 	}
 
-	originHost := parsedOrigin.Host
-	allowedHost := "localhost"
-	if r.Host != "" {
-		if idx := strings.Index(r.Host, ":"); idx > 0 {
-			allowedHost = r.Host[:idx]
-		} else {
-			allowedHost = r.Host
+	// Update counters
+	visitor.Requests++
+	visitor.LastSeen = now
+	return true
+}
+
+func (rl *RateLimiter) cleanup() {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		rl.mutex.Lock()
+		now := time.Now()
+
+		// Remove visitors that haven't been seen in a window period
+		for ip, visitor := range rl.visitors {
+			if now.Sub(visitor.LastSeen) > rl.window {
+				delete(rl.visitors, ip)
+			}
 		}
+
+		rl.mutex.Unlock()
 	}
-
-	if originHost == allowedHost || originHost == "localhost" || originHost == "127.0.0.1" {
-		return true
-	}
-
-	return false
-}
-
-func isLocalAddress(addr string) bool {
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		host = addr
-	}
-
-	ip := net.ParseIP(host)
-	if ip == nil {
-		return false
-	}
-
-	return ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast()
-}
-
-func getClientIP(r *http.Request) string {
-	forwarded := r.Header.Get("X-Forwarded-For")
-	if forwarded != "" {
-		parts := strings.Split(forwarded, ",")
-		return strings.TrimSpace(parts[0])
-	}
-
-	realIP := r.Header.Get("X-Real-IP")
-	if realIP != "" {
-		return realIP
-	}
-
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return ip
-}
-
-func (g *Gateway) isIPAllowed(ipStr string) bool {
-	if len(g.config.AllowedIPs) == 0 {
-		return true
-	}
-
-	ip := net.ParseIP(ipStr)
-	if ip == nil {
-		return false
-	}
-
-	for _, allowed := range g.config.AllowedIPs {
-		_, cidr, err := net.ParseCIDR(allowed)
-		if err != nil {
-			continue
-		}
-		if cidr.Contains(ip) {
-			return true
-		}
-	}
-
-	return false
-}
-
-func (g *Gateway) validateAuthToken(r *http.Request) bool {
-	if g.config.AuthToken == "" {
-		return true
-	}
-
-	token := r.Header.Get("Authorization")
-	if token != "" && strings.HasPrefix(token, "Bearer ") {
-		token = token[7:]
-	}
-
-	return subtle.ConstantTimeCompare([]byte(token), []byte(g.config.AuthToken)) == 1
 }
 
 type Gateway struct {
-	httpServer  *http.Server
-	httpsServer *http.Server
-	tcpListener net.Listener
-	wsServer    *http.Server
-	tunnelMgr   tunnel.Manager
-	shortener   *shortener.Shortener
-	config      *GatewayConfig
-	connections map[string]*ClientConnection
-	mu          sync.RWMutex
+	httpServer     *http.Server
+	httpsServer    *http.Server
+	tcpListener    net.Listener
+	wsServer       *http.Server
+	tunnelMgr      tunnel.Manager
+	shortener      *shortener.Shortener
+	config         *GatewayConfig
+	rateLimiter    *RateLimiter
+	shortenLimiter *RateLimiter // Separate limiter for URL shortening to prevent abuse
+	connections    map[string]*ClientConnection
+	mu             sync.RWMutex
 }
 
 type GatewayConfig struct {
-	HTTPPort       int
-	HTTPSPort      int
-	TCPPort        int
-	WSPort         int
-	Domain         string
-	TLSCert        string
-	TLSKey         string
-	AllowedOrigins []string
-	AllowedIPs     []string
-	AuthToken      string
-	Shortener      GatewayShortenerConfig
+	HTTPPort           int
+	HTTPSPort          int
+	TCPPort            int
+	WSPort             int
+	Domain             string
+	TLSCert            string
+	TLSKey             string
+	AllowedOrigins     []string
+	AllowedIPs         []string
+	AuthToken          string
+	RateLimit          int // Requests per time window
+	ShortenerRateLimit int // Requests per time window (typically lower)
+	Shortener          GatewayShortenerConfig
 }
 
 type GatewayShortenerConfig struct {
@@ -166,11 +152,19 @@ type ClientConnection struct {
 func NewGateway(cfg *GatewayConfig, mgr tunnel.Manager) *Gateway {
 	s := shortener.New()
 
+	// Default to 100/minute for general API requests and 20/hour for URL shortening
+	rateWindow := time.Minute
+	if cfg.Shortener.Enabled && cfg.Shortener.CleanupFreq > 0 {
+		rateWindow = time.Duration(cfg.Shortener.CleanupFreq) * time.Minute
+	}
+
 	g := &Gateway{
-		tunnelMgr:   mgr,
-		shortener:   s,
-		config:      cfg,
-		connections: make(map[string]*ClientConnection),
+		tunnelMgr:      mgr,
+		shortener:      s,
+		config:         cfg,
+		rateLimiter:    NewRateLimiter(cfg.RateLimit, rateWindow),
+		shortenLimiter: NewRateLimiter(cfg.ShortenerRateLimit, time.Hour), // Fewer creates per hour for shortening
+		connections:    make(map[string]*ClientConnection),
 	}
 
 	if cfg.Shortener.CleanupFreq > 0 {
@@ -183,11 +177,19 @@ func NewGateway(cfg *GatewayConfig, mgr tunnel.Manager) *Gateway {
 func NewGatewayWithStorage(cfg *GatewayConfig, mgr tunnel.Manager, storage shortener.Storage) *Gateway {
 	s := shortener.NewWithStorage(storage)
 
+	// Default to 100/minute for general API requests and 20/hour for URL shortening
+	rateWindow := time.Minute
+	if cfg.Shortener.Enabled && cfg.Shortener.CleanupFreq > 0 {
+		rateWindow = time.Duration(cfg.Shortener.CleanupFreq) * time.Minute
+	}
+
 	g := &Gateway{
-		tunnelMgr:   mgr,
-		shortener:   s,
-		config:      cfg,
-		connections: make(map[string]*ClientConnection),
+		tunnelMgr:      mgr,
+		shortener:      s,
+		config:         cfg,
+		rateLimiter:    NewRateLimiter(cfg.RateLimit, rateWindow),
+		shortenLimiter: NewRateLimiter(cfg.ShortenerRateLimit, time.Hour), // Fewer creates per hour for shortening
+		connections:    make(map[string]*ClientConnection),
 	}
 
 	if cfg.Shortener.CleanupFreq > 0 {
@@ -212,10 +214,10 @@ func (g *Gateway) startCleanupTicker() {
 
 func (g *Gateway) StartHTTP(ctx context.Context) error {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", g.handleHTTPRequest)
+	mux.HandleFunc("/", g.handleHTTPRequestRateLimited) // Use rate-limited version
 	mux.HandleFunc("/health", g.handleHealth)
-	mux.HandleFunc("/metrics", g.handleMetrics)
-	mux.HandleFunc("/s/", g.handleShortURLRedirect)
+	mux.HandleFunc("/metrics", g.handleMetricsRateLimited)     // Protect metrics with rate limiting
+	mux.HandleFunc("/s/", g.handleShortURLRedirectRateLimited) // Use rate-limited redirect
 	mux.HandleFunc("/api/shorten", g.handleShortenURL)
 
 	g.httpServer = &http.Server{
@@ -240,9 +242,11 @@ func (g *Gateway) StartHTTPS(ctx context.Context) error {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", g.handleHTTPRequest)
+	mux.HandleFunc("/", g.handleHTTPRequestRateLimited) // Use rate-limited version
 	mux.HandleFunc("/health", g.handleHealth)
-	mux.HandleFunc("/metrics", g.handleMetrics)
+	mux.HandleFunc("/metrics", g.handleMetricsRateLimited)     // Protect metrics with rate limiting
+	mux.HandleFunc("/s/", g.handleShortURLRedirectRateLimited) // Use rate-limited redirect
+	mux.HandleFunc("/api/shorten", g.handleShortenURL)
 
 	g.httpsServer = &http.Server{
 		Addr:    fmt.Sprintf(":%d", g.config.HTTPSPort),
@@ -257,6 +261,92 @@ func (g *Gateway) StartHTTPS(ctx context.Context) error {
 
 	log.Printf("HTTPS gateway started on :%d", g.config.HTTPSPort)
 	return nil
+}
+
+func (g *Gateway) handleHTTPRequestRateLimited(w http.ResponseWriter, r *http.Request) {
+	clientIP := getClientIP(r)
+	if !g.rateLimiter.Allow(clientIP) {
+		http.Error(w, "Rate limit exceeded, try again later", http.StatusTooManyRequests)
+		return
+	}
+
+	g.handleHTTPRequest(w, r)
+}
+
+func (g *Gateway) handleMetricsRateLimited(w http.ResponseWriter, r *http.Request) {
+	clientIP := getClientIP(r)
+	if !g.rateLimiter.Allow(clientIP) {
+		http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
+		return
+	}
+
+	g.handleMetrics(w, r)
+}
+
+func (g *Gateway) handleShortURLRedirectRateLimited(w http.ResponseWriter, r *http.Request) {
+	clientIP := getClientIP(r)
+	if !g.rateLimiter.Allow(clientIP) {
+		http.Error(w, "Rate limit exceeded, try again later", http.StatusTooManyRequests)
+		return
+	}
+
+	g.handleShortURLRedirect(w, r)
+}
+
+func (g *Gateway) handleShortenURL(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	clientIP := getClientIP(r)
+
+	// Apply specific rate limiting for URL shortening
+	if !g.shortenLimiter.Allow(clientIP) {
+		http.Error(w, "Rate limit exceeded for URL shortening, try again later", http.StatusTooManyRequests)
+		return
+	}
+
+	var req ShortenRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.URL == "" {
+		http.Error(w, "URL is required", http.StatusBadRequest)
+		return
+	}
+
+	// Use provided TTL or default, limited by max allowed TTL from config
+	ttlHours := g.config.Shortener.DefaultTTL
+	if req.TTL > 0 && req.TTL <= g.config.Shortener.MaxTTL {
+		// Respect the shorter limit between user request and server config
+		ttlHours = req.TTL
+	} else if req.TTL > g.config.Shortener.MaxTTL {
+		ttlHours = g.config.Shortener.MaxTTL
+	}
+
+	url, err := g.shortener.Create(req.URL, time.Duration(ttlHours)*time.Hour)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	scheme := "http"
+	if g.config.HTTPSPort > 0 {
+		scheme = "https"
+	}
+
+	resp := ShortenResponse{
+		ShortCode: url.ShortCode,
+		ShortURL:  fmt.Sprintf("%s://%s%s%s", scheme, r.Host, g.config.Shortener.BasePath, url.ShortCode),
+		Original:  url.Original,
+		ExpiresAt: url.ExpiresAt.Unix(),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
 
 func (g *Gateway) StartTCP(ctx context.Context) error {
@@ -364,6 +454,18 @@ func (g *Gateway) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(`{"status":"ok"}`))
 }
 
+type ShortenRequest struct {
+	URL string `json:"url"`
+	TTL int    `json:"ttl"`
+}
+
+type ShortenResponse struct {
+	ShortCode string `json:"short_code"`
+	ShortURL  string `json:"short_url"`
+	Original  string `json:"original"`
+	ExpiresAt int64  `json:"expires_at"`
+}
+
 func (g *Gateway) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	if !g.validateAuthToken(r) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -388,66 +490,6 @@ func (g *Gateway) handleMetrics(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.Write([]byte(strings.Join(lines, "\n")))
-}
-
-type ShortenRequest struct {
-	URL string `json:"url"`
-	TTL int    `json:"ttl"`
-}
-
-type ShortenResponse struct {
-	ShortCode string `json:"short_code"`
-	ShortURL  string `json:"short_url"`
-	Original  string `json:"original"`
-	ExpiresAt int64  `json:"expires_at"`
-}
-
-func (g *Gateway) handleShortenURL(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var req ShortenRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	if req.URL == "" {
-		http.Error(w, "URL is required", http.StatusBadRequest)
-		return
-	}
-
-	// Use provided TTL or default, limited by max allowed TTL from config
-	ttlHours := g.config.Shortener.DefaultTTL
-	if req.TTL > 0 && req.TTL <= g.config.Shortener.MaxTTL {
-		// Respect the shorter limit between user request and server config
-		ttlHours = req.TTL
-	} else if req.TTL > g.config.Shortener.MaxTTL {
-		ttlHours = g.config.Shortener.MaxTTL
-	}
-
-	url, err := g.shortener.Create(req.URL, time.Duration(ttlHours)*time.Hour)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	scheme := "http"
-	if g.config.HTTPSPort > 0 {
-		scheme = "https"
-	}
-
-	resp := ShortenResponse{
-		ShortCode: url.ShortCode,
-		ShortURL:  fmt.Sprintf("%s://%s%s%s", scheme, r.Host, g.config.Shortener.BasePath, url.ShortCode),
-		Original:  url.Original,
-		ExpiresAt: url.ExpiresAt.Unix(),
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
 }
 
 func (g *Gateway) handleShortURLRedirect(w http.ResponseWriter, r *http.Request) {
@@ -554,5 +596,105 @@ func (g *Gateway) Stop() error {
 	if g.wsServer != nil {
 		g.wsServer.Shutdown(context.Background())
 	}
+	if g.httpsServer != nil {
+		g.httpsServer.Shutdown(context.Background())
+	}
 	return nil
+}
+
+func checkOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+
+	parsedOrigin, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+
+	originHost := parsedOrigin.Host
+	allowedHost := "localhost"
+	if r.Host != "" {
+		if idx := strings.Index(r.Host, ":"); idx > 0 {
+			allowedHost = r.Host[:idx]
+		} else {
+			allowedHost = r.Host
+		}
+	}
+
+	if originHost == allowedHost || originHost == "localhost" || originHost == "127.0.0.1" {
+		return true
+	}
+
+	return false
+}
+
+func isLocalAddress(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+
+	return ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast()
+}
+
+func getClientIP(r *http.Request) string {
+	forwarded := r.Header.Get("X-Forwarded-For")
+	if forwarded != "" {
+		parts := strings.Split(forwarded, ",")
+		return strings.TrimSpace(parts[0])
+	}
+
+	realIP := r.Header.Get("X-Real-IP")
+	if realIP != "" {
+		return realIP
+	}
+
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return ip
+}
+
+func (g *Gateway) isIPAllowed(ipStr string) bool {
+	if len(g.config.AllowedIPs) == 0 {
+		return true
+	}
+
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false
+	}
+
+	for _, allowed := range g.config.AllowedIPs {
+		_, cidr, err := net.ParseCIDR(allowed)
+		if err != nil {
+			continue
+		}
+		if cidr.Contains(ip) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (g *Gateway) validateAuthToken(r *http.Request) bool {
+	if g.config.AuthToken == "" {
+		return true
+	}
+
+	token := r.Header.Get("Authorization")
+	if token != "" && strings.HasPrefix(token, "Bearer ") {
+		token = token[7:]
+	}
+
+	return subtle.ConstantTimeCompare([]byte(token), []byte(g.config.AuthToken)) == 1
 }

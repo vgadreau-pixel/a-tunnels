@@ -62,11 +62,13 @@ func main() {
 	}
 
 	gw := gateway.NewGatewayWithStorage(&gateway.GatewayConfig{
-		HTTPPort:  cfg.Server.HTTPPort,
-		HTTPSPort: cfg.Server.HTTPSPort,
-		TCPPort:   cfg.Server.TCPPortStart,
-		WSPort:    cfg.Server.WSPortStart,
-		Domain:    cfg.Server.Domain,
+		HTTPPort:           cfg.Server.HTTPPort,
+		HTTPSPort:          cfg.Server.HTTPSPort,
+		TCPPort:            cfg.Server.TCPPortStart,
+		WSPort:             cfg.Server.WSPortStart,
+		Domain:             cfg.Server.Domain,
+		RateLimit:          cfg.Server.Limits.RateLimit,
+		ShortenerRateLimit: cfg.Server.Limits.ShortenerLimit,
 		Shortener: gateway.GatewayShortenerConfig{
 			Enabled:     cfg.Server.Shortener.Enabled,
 			DefaultTTL:  cfg.Server.Shortener.DefaultTTL,
