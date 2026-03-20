@@ -2,14 +2,17 @@ package tunnel
 
 import (
 	"context"
-	"crypto/rand"
+	crand "crypto/rand"
 	"encoding/hex"
 	"fmt"
+	mrand "math/rand"
 	"sync"
 	"time"
 
 	"github.com/a-tunnels/a-tunnels/internal/config"
 )
+
+var rng = mrand.New(mrand.NewSource(time.Now().UnixNano()))
 
 type Tunnel struct {
 	ID         string
@@ -29,11 +32,12 @@ type Tunnel struct {
 type TunnelStatus string
 
 const (
-	TunnelStatusPending TunnelStatus = "pending"
-	TunnelStatusActive  TunnelStatus = "active"
-	TunnelStatusPaused  TunnelStatus = "paused"
-	TunnelStatusError   TunnelStatus = "error"
-	TunnelStatusStopped TunnelStatus = "stopped"
+	TunnelStatusPending  TunnelStatus = "pending"
+	TunnelStatusActive   TunnelStatus = "active"
+	TunnelStatusPaused   TunnelStatus = "paused"
+	TunnelStatusError    TunnelStatus = "error"
+	TunnelStatusStopped  TunnelStatus = "stopped"
+	TunnelStatusDisabled TunnelStatus = "disabled"
 )
 
 type TunnelStats struct {
@@ -62,6 +66,8 @@ type Manager interface {
 	Start(id string) error
 	Stop(id string) error
 	Restart(id string) error
+	Disable(id string) error
+	Enable(id string) error
 	UpdateStats(id string, conns int64, bytesIn, bytesOut int64)
 	GetStats(id string) (*TunnelStats, error)
 	Subscribe() chan *TunnelEvent
@@ -69,8 +75,38 @@ type Manager interface {
 
 func generateID() string {
 	bytes := make([]byte, 6)
-	rand.Read(bytes)
+	crand.Read(bytes)
 	return hex.EncodeToString(bytes)
+}
+
+var adjectives = []string{
+	"brave", "calm", "eager", "gentle", "happy", "jolly", "kind", "lively",
+	"merry", "nice", "proud", "silly", "swift", "wise", "young", "bold",
+	"cool", "dawn", "eager", "fair", "gold", "hero", "iron", "jade",
+	"keen", "light", "mist", "neon", "opal", "pearl", "quiet", "rose",
+	"silver", "true", "urban", "vivid", "wild", "zen", "amber", "bright",
+	"coral", "dream", "echo", "flame", "grace", "haze", "ivory", "joy",
+	"kindle", "lunar", "magic", "nova", "ocean", "peace", "quest", "river",
+	"stone", "turbo", "ultra", "violet", "wave", "xenon", "yonder", "zest",
+}
+
+var nouns = []string{
+	"river", "forest", "mountain", "ocean", "valley", "prairie", "meadow",
+	"canyon", "glacier", "island", "desert", "jungle", "rainforest", "tundra",
+	"waterfall", "sunset", "sunrise", "horizon", "galaxy", "nebula", "comet",
+	"planet", "star", "moon", "sun", "sky", "cloud", "storm", "rain", "snow",
+	"wind", "fire", "earth", "stone", "rock", "tree", "flower", "garden",
+	"lake", "pond", "stream", "beach", "shore", "reef", "cave", "cliff",
+	"field", "hill", "peak", "ridge", "valley", "grove", "wood", "marsh",
+	"swamp", "delta", "ford", "bridge", "tower", "castle", "palace", "temple",
+}
+
+func GenerateRandomName() string {
+	adjIdx := rng.Intn(len(adjectives))
+	nounIdx := rng.Intn(len(nouns))
+	num := rng.Intn(10000)
+
+	return fmt.Sprintf("%s-%s-%04d", adjectives[adjIdx], nouns[nounIdx], num)
 }
 
 func NewTunnel(cfg *config.TunnelConfig) *Tunnel {
@@ -247,6 +283,40 @@ func (m *manager) Restart(id string) error {
 		return err
 	}
 	return m.Start(id)
+}
+
+func (m *manager) Disable(id string) error {
+	tunnel, err := m.Get(id)
+	if err != nil {
+		return err
+	}
+
+	tunnel.SetStatus(TunnelStatusDisabled)
+
+	m.emit(&TunnelEvent{
+		Type:    "disabled",
+		Tunnel:  tunnel,
+		Message: fmt.Sprintf("Tunnel %s disabled due to inactivity", tunnel.Name),
+	})
+
+	return nil
+}
+
+func (m *manager) Enable(id string) error {
+	tunnel, err := m.Get(id)
+	if err != nil {
+		return err
+	}
+
+	tunnel.SetStatus(TunnelStatusActive)
+
+	m.emit(&TunnelEvent{
+		Type:    "enabled",
+		Tunnel:  tunnel,
+		Message: fmt.Sprintf("Tunnel %s enabled", tunnel.Name),
+	})
+
+	return nil
 }
 
 func (m *manager) UpdateStats(id string, conns int64, bytesIn, bytesOut int64) {

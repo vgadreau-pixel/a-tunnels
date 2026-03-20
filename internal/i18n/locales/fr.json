@@ -1,0 +1,90 @@
+{
+  "app": {
+    "name": "A-Tunnels",
+    "version": "Version"
+  },
+  "commands": {
+    "list": "Lister les tunnels",
+    "get": "Voir les détails d'un tunnel",
+    "create": "Créer un tunnel",
+    "delete": "Supprimer un tunnel",
+    "stats": "Voir les statistiques d'un tunnel",
+    "restart": "Redémarrer un tunnel",
+    "logs": "Voir les logs d'un tunnel",
+    "health": "Vérifier la santé du serveur"
+  },
+  "usage": {
+    "title": "Utilisation :",
+    "example": "Exemples :"
+  },
+  "options": {
+    "server": "URL du serveur",
+    "token": "Jeton API",
+    "json": "Sortie JSON",
+    "no_color": "Désactiver les couleurs",
+    "lang": "Langue (en, fr, es)"
+  },
+  "errors": {
+    "token_required": "Jeton requis (utilisez -token ou ATUNNELS_TOKEN)",
+    "unknown_command": "Commande inconnue",
+    "tunnel_not_found": "Tunnel non trouvé",
+    "create_usage": "Utilisation : create [nom] <protocole> <addr_locale>",
+    "delete_usage": "Utilisation : delete <nom>",
+    "stats_usage": "Utilisation : stats <nom>",
+    "get_usage": "Utilisation : get <nom>",
+    "failed_to_generate_name": "Échec de la génération du nom"
+  },
+  "tunnel": {
+    "created": "Tunnel créé",
+    "deleted": "Tunnel supprimé",
+    "restarted": "Tunnel redémarré",
+    "name": "Nom",
+    "id": "ID",
+    "protocol": "Protocole",
+    "local_addr": "Adresse locale",
+    "status": "Statut",
+    "subdomain": "Sous-domaine",
+    "active_connections": "Connexions actives",
+    "total_requests": "Requêtes totales",
+    "total_bytes_in": "Octets reçus",
+    "total_bytes_out": "Octets envoyés"
+  },
+  "status": {
+    "pending": "en attente",
+    "active": "actif",
+    "paused": "en pause",
+    "error": "erreur",
+    "stopped": "arrêté",
+    "disabled": "désactivé"
+  },
+  "messages": {
+    "no_tunnels": "Aucun tunnel",
+    "checking_health": "Vérification de la santé...",
+    "server_healthy": "Le serveur est sain",
+    "server_unhealthy": "Le serveur est malade"
+  },
+  "cli": {
+    "help": "Afficher l'aide",
+    "version": "Afficher la version"
+  },
+  "server": {
+    "starting": "Démarrage du serveur A-Tunnels",
+    "all_started": "Tous les services ont démarré avec succès",
+    "shutting_down": "Arrêt en cours...",
+    "stopped": "Serveur arrêté",
+    "failed_to_load_config": "Échec du chargement de la configuration",
+    "shortener_storage_failed": "Échec de la création du stockage du raccourcisseur, utilisation du stockage mémoire",
+    "http_failed": "Échec de la passerelle HTTP",
+    "https_failed": "Échec de la passerelle HTTPS",
+    "tcp_failed": "Échec de la passerelle TCP",
+    "ws_failed": "Échec de la passerelle WebSocket",
+    "api_failed": "Erreur du serveur API",
+    "mcp_failed": "Erreur du serveur MCP",
+    "ssh_failed": "Erreur du serveur SSH",
+    "cleanup_stopped": "Goroutine de nettoyage arrêtée",
+    "cleanup_deleting": "Nettoyage : suppression du tunnel",
+    "cleanup_disable": "Nettoyage : désactivation du tunnel",
+    "cleanup_delete_failed": "Échec de la suppression du tunnel",
+    "cleanup_disable_failed": "Échec de la désactivation du tunnel"
+  }
+}

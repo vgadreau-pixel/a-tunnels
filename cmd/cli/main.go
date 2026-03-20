@@ -7,8 +7,10 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/a-tunnels/a-tunnels/internal/i18n"
 	"github.com/a-tunnels/a-tunnels/pkg/sdk/go"
 	"github.com/fatih/color"
 )
@@ -22,6 +24,7 @@ var (
 	token      string
 	outputJSON bool
 	noColor    bool
+	lang       string
 )
 
 var (
@@ -35,12 +38,18 @@ var (
 )
 
 func main() {
-	flag.StringVar(&serverURL, "server", "http://localhost:8080", "Server URL")
-	flag.StringVar(&token, "token", "", "API token")
-	flag.BoolVar(&outputJSON, "json", false, "Output JSON")
-	flag.BoolVar(&noColor, "no-color", false, "Disable colors")
+	flag.StringVar(&serverURL, "server", "http://localhost:8080", i18n.T("options.server"))
+	flag.StringVar(&token, "token", "", i18n.T("options.token"))
+	flag.BoolVar(&outputJSON, "json", false, i18n.T("options.json"))
+	flag.BoolVar(&noColor, "no-color", false, i18n.T("options.no_color"))
+	flag.StringVar(&lang, "lang", "", i18n.T("options.lang"))
 	flag.Usage = usage
 	flag.Parse()
+
+	i18n.Init()
+	if lang != "" {
+		i18n.SetLang(lang)
+	}
 
 	if noColor {
 		color.NoColor = true
@@ -51,19 +60,41 @@ func main() {
 		os.Exit(1)
 	}
 
-	if token == "" {
-		token = os.Getenv("ATUNNELS_TOKEN")
+	cmd := flag.Arg(0)
+	args := flag.Args()[1:]
+
+	noTokenCmds := map[string]bool{
+		"install-skill": true,
+		"skill":         true,
+		"help":          true,
+		"h":             true,
+		"-h":            true,
+		"--help":        true,
+		"version":       true,
+		"v":             true,
 	}
 
-	if token == "" {
-		fmt.Fprintln(os.Stderr, red("Error:"), "token required (use -token or ATUNNELS_TOKEN)")
-		os.Exit(1)
+	if !noTokenCmds[cmd] {
+		if token == "" {
+			token = os.Getenv("ATUNNELS_TOKEN")
+		}
+
+		if token == "" {
+			fmt.Fprintln(os.Stderr, red("Error:"), i18n.TError("token_required"))
+			os.Exit(1)
+		}
+	}
+
+	if cmd == "install-skill" || cmd == "skill" {
+		if err := installSkill(); err != nil {
+			fmt.Fprintln(os.Stderr, red("Error:"), err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+		return
 	}
 
 	client := atunnels.NewClient(serverURL, token)
-
-	cmd := flag.Arg(0)
-	args := flag.Args()[1:]
 
 	var err error
 	switch cmd {
@@ -88,8 +119,10 @@ func main() {
 		err = checkHealth(client)
 	case "version", "v":
 		showVersion()
+	case "install-skill", "skill":
+		err = installSkill()
 	default:
-		fmt.Fprintf(os.Stderr, red("Unknown command:"), " %s\n", cmd)
+		fmt.Fprintf(os.Stderr, red(i18n.TError("unknown_command")+":"), " %s\n", cmd)
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -102,36 +135,39 @@ func main() {
 
 func usage() {
 	fmt.Fprintln(os.Stderr, bold(cyan("╔═══════════════════════════════════════════╗")))
-	fmt.Fprintln(os.Stderr, bold(cyan("║")), bold("  A-Tunnels CLI                    "), bold(cyan("║")))
+	fmt.Fprintln(os.Stderr, bold(cyan("║")), bold("  "+i18n.T("app.name")+"                    "), bold(cyan("║")))
 	fmt.Fprintln(os.Stderr, bold(cyan("╚═══════════════════════════════════════════╝")))
 	fmt.Fprintln(os.Stderr)
-	fmt.Fprintln(os.Stderr, bold(yellow("Usage:")))
+	fmt.Fprintln(os.Stderr, bold(yellow(i18n.T("usage.title"))))
 	fmt.Fprintln(os.Stderr, bold("  a-tunnels [options] <command> [args]"))
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, bold(yellow("Commands:")))
-	fmt.Fprintln(os.Stderr, bold("  list, ls            "), dim("List all tunnels"))
-	fmt.Fprintln(os.Stderr, bold("  get <name>          "), dim("Get tunnel details"))
-	fmt.Fprintln(os.Stderr, bold("  create <name> <proto> <addr>  "), dim("Create tunnel"))
-	fmt.Fprintln(os.Stderr, bold("  delete, rm <name>  "), dim("Delete tunnel"))
-	fmt.Fprintln(os.Stderr, bold("  stats <name>        "), dim("Get tunnel statistics"))
-	fmt.Fprintln(os.Stderr, bold("  restart <name>      "), dim("Restart tunnel"))
-	fmt.Fprintln(os.Stderr, bold("  logs <name>         "), dim("Get tunnel logs"))
-	fmt.Fprintln(os.Stderr, bold("  health              "), dim("Check server health"))
+	fmt.Fprintln(os.Stderr, bold("  list, ls            "), dim(i18n.TCommand("list")))
+	fmt.Fprintln(os.Stderr, bold("  get <name>          "), dim(i18n.TCommand("get")))
+	fmt.Fprintln(os.Stderr, bold("  create [name] <proto> <addr>"), dim(i18n.TCommand("create")))
+	fmt.Fprintln(os.Stderr, bold("  delete, rm <name>  "), dim(i18n.TCommand("delete")))
+	fmt.Fprintln(os.Stderr, bold("  stats <name>        "), dim(i18n.TCommand("stats")))
+	fmt.Fprintln(os.Stderr, bold("  restart <name>      "), dim(i18n.TCommand("restart")))
+	fmt.Fprintln(os.Stderr, bold("  logs <name>         "), dim(i18n.TCommand("logs")))
+	fmt.Fprintln(os.Stderr, bold("  health              "), dim(i18n.TCommand("health")))
+	fmt.Fprintln(os.Stderr, bold("  install-skill       "), dim("Install LLM skill for this tool"))
 	fmt.Fprintln(os.Stderr)
-	fmt.Fprintln(os.Stderr, bold(yellow("Options:")))
-	fmt.Fprintln(os.Stderr, bold("  -server URL         "), dim("Server URL (default: http://localhost:8080)"))
-	fmt.Fprintln(os.Stderr, bold("  -token string       "), dim("API token"))
-	fmt.Fprintln(os.Stderr, bold("  -json               "), dim("Output JSON"))
-	fmt.Fprintln(os.Stderr, bold("  -no-color           "), dim("Disable colors"))
+	fmt.Fprintln(os.Stderr, bold(yellow(i18n.T("options.server")+":")))
+	fmt.Fprintln(os.Stderr, bold("  -server URL         "), dim(i18n.T("options.server")+" (default: http://localhost:8080)"))
+	fmt.Fprintln(os.Stderr, bold("  -token string       "), dim(i18n.T("options.token")))
+	fmt.Fprintln(os.Stderr, bold("  -json               "), dim(i18n.T("options.json")))
+	fmt.Fprintln(os.Stderr, bold("  -no-color           "), dim(i18n.T("options.no_color")))
+	fmt.Fprintln(os.Stderr, bold("  -lang <en|fr|es>    "), dim(i18n.T("options.lang")))
 	fmt.Fprintln(os.Stderr)
-	fmt.Fprintln(os.Stderr, bold(yellow("Examples:")))
+	fmt.Fprintln(os.Stderr, bold(yellow(i18n.T("usage.example"))))
 	fmt.Fprintln(os.Stderr, dim("  a-tunnels -token xxx list"))
 	fmt.Fprintln(os.Stderr, dim("  a-tunnels -token xxx create webhook http localhost:3000"))
 	fmt.Fprintln(os.Stderr, dim("  a-tunnels -token xxx stats webhook"))
+	fmt.Fprintln(os.Stderr, dim("  a-tunnels install-skill"))
 }
 
 func showVersion() {
-	fmt.Printf("%s v%s\n", bold("A-Tunnels CLI"), green("1.0.0"))
+	fmt.Printf("%s %s v%s\n", bold(i18n.T("app.name")), bold(i18n.T("app.version")), green("1.0.0"))
 	fmt.Printf("%s: %s\n", dim("Build"), "go")
 }
 
@@ -147,13 +183,13 @@ func listTunnels(client *atunnels.Client) error {
 	}
 
 	if len(tunnels) == 0 {
-		fmt.Println(dim("No tunnels"))
+		fmt.Println(dim(i18n.T("messages.no_tunnels")))
 		return nil
 	}
 
 	fmt.Println()
 	fmt.Printf("%s  %s  %s  %s  %s\n",
-		bold("ID"), bold("NAME"), bold("PROTOCOL"), bold("LOCAL_ADDR"), bold("STATUS"))
+		bold(i18n.T("tunnel.id")), bold(i18n.T("tunnel.name")), bold(i18n.T("tunnel.protocol")), bold(i18n.T("tunnel.local_addr")), bold(i18n.T("tunnel.status")))
 	fmt.Println(dim(strings.Repeat("─", 70)))
 	for _, t := range tunnels {
 		statusColor := yellow
@@ -167,7 +203,7 @@ func listTunnels(client *atunnels.Client) error {
 			cyan(t.Name),
 			magenta(t.Protocol),
 			dim(t.LocalAddr),
-			statusColor(t.Status))
+			statusColor(i18n.TStatus(t.Status)))
 	}
 	fmt.Println()
 	return nil
@@ -175,7 +211,7 @@ func listTunnels(client *atunnels.Client) error {
 
 func getTunnel(client *atunnels.Client, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: get <name>")
+		return fmt.Errorf(i18n.TError("get_usage"))
 	}
 
 	name := args[0]
@@ -190,26 +226,38 @@ func getTunnel(client *atunnels.Client, args []string) error {
 	}
 
 	fmt.Println()
-	fmt.Printf("  %s  %s\n", bold("Name:"), cyan(tunnel.Name))
-	fmt.Printf("  %s  %s\n", bold("ID:"), dim(tunnel.ID))
-	fmt.Printf("  %s  %s\n", bold("Protocol:"), magenta(tunnel.Protocol))
-	fmt.Printf("  %s  %s\n", bold("LocalAddr:"), dim(tunnel.LocalAddr))
-	fmt.Printf("  %s  %s\n", bold("Status:"), green(tunnel.Status))
+	fmt.Printf("  %s  %s\n", bold(i18n.T("tunnel.name")+":"), cyan(tunnel.Name))
+	fmt.Printf("  %s  %s\n", bold(i18n.T("tunnel.id")+":"), dim(tunnel.ID))
+	fmt.Printf("  %s  %s\n", bold(i18n.T("tunnel.protocol")+":"), magenta(tunnel.Protocol))
+	fmt.Printf("  %s  %s\n", bold(i18n.T("tunnel.local_addr")+":"), dim(tunnel.LocalAddr))
+	fmt.Printf("  %s  %s\n", bold(i18n.T("tunnel.status")+":"), green(i18n.TStatus(tunnel.Status)))
 	if tunnel.Subdomain != "" {
-		fmt.Printf("  %s  %s\n", bold("Subdomain:"), cyan(tunnel.Subdomain))
+		fmt.Printf("  %s  %s\n", bold(i18n.T("tunnel.subdomain")+":"), cyan(tunnel.Subdomain))
 	}
 	fmt.Println()
 	return nil
 }
 
 func createTunnel(client *atunnels.Client, args []string) error {
-	if len(args) < 3 {
-		return fmt.Errorf("usage: create <name> <protocol> <localAddr>")
+	if len(args) < 2 {
+		return fmt.Errorf(i18n.TError("create_usage"))
 	}
 
-	name := args[0]
-	protocol := args[1]
-	localAddr := args[2]
+	var name, protocol, localAddr string
+
+	if len(args) == 2 {
+		generatedName, err := client.GenerateName()
+		if err != nil {
+			return fmt.Errorf(i18n.TError("failed_to_generate_name")+": %w", err)
+		}
+		name = generatedName
+		protocol = args[0]
+		localAddr = args[1]
+	} else {
+		name = args[0]
+		protocol = args[1]
+		localAddr = args[2]
+	}
 
 	tunnel, err := client.CreateTunnel(&atunnels.Tunnel{
 		Name:      name,
@@ -225,14 +273,14 @@ func createTunnel(client *atunnels.Client, args []string) error {
 		return nil
 	}
 
-	fmt.Printf("%s %s (%s)\n", green("✓"), bold("Tunnel created"), cyan(tunnel.Name))
-	fmt.Printf("  %s: %s\n", dim("ID"), tunnel.ID)
+	fmt.Printf("%s %s (%s)\n", green("✓"), bold(i18n.T("tunnel.created")), cyan(tunnel.Name))
+	fmt.Printf("  %s: %s\n", dim(i18n.T("tunnel.id")), tunnel.ID)
 	return nil
 }
 
 func deleteTunnel(client *atunnels.Client, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: delete <name>")
+		return fmt.Errorf(i18n.TError("delete_usage"))
 	}
 
 	name := args[0]
@@ -241,13 +289,13 @@ func deleteTunnel(client *atunnels.Client, args []string) error {
 		return err
 	}
 
-	fmt.Printf("%s %s\n", green("✓"), bold("Tunnel deleted"))
+	fmt.Printf("%s %s\n", green("✓"), bold(i18n.T("tunnel.deleted")))
 	return nil
 }
 
 func getStats(client *atunnels.Client, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: stats <name>")
+		return fmt.Errorf(i18n.TError("stats_usage"))
 	}
 
 	name := args[0]
@@ -262,10 +310,10 @@ func getStats(client *atunnels.Client, args []string) error {
 	}
 
 	fmt.Println()
-	fmt.Printf("  %s  %s\n", bold("Active Connections:"), cyan(stats.ActiveConnections))
-	fmt.Printf("  %s  %s\n", bold("Total Requests:"), cyan(stats.TotalRequests))
-	fmt.Printf("  %s  %s\n", bold("Total Bytes In:"), green(stats.TotalBytesIn))
-	fmt.Printf("  %s  %s\n", bold("Total Bytes Out:"), magenta(stats.TotalBytesOut))
+	fmt.Printf("  %s  %s\n", bold(i18n.T("tunnel.active_connections")+":"), cyan(stats.ActiveConnections))
+	fmt.Printf("  %s  %s\n", bold(i18n.T("tunnel.total_requests")+":"), cyan(stats.TotalRequests))
+	fmt.Printf("  %s  %s\n", bold(i18n.T("tunnel.total_bytes_in")+":"), green(stats.TotalBytesIn))
+	fmt.Printf("  %s  %s\n", bold(i18n.T("tunnel.total_bytes_out")+":"), magenta(stats.TotalBytesOut))
 	fmt.Println()
 	return nil
 }
@@ -281,7 +329,7 @@ func restartTunnel(client *atunnels.Client, args []string) error {
 		return err
 	}
 
-	fmt.Printf("%s %s\n", green("✓"), bold("Tunnel restarted"))
+	fmt.Printf("%s %s\n", green("✓"), bold(i18n.T("tunnel.restarted")))
 	return nil
 }
 
@@ -321,9 +369,9 @@ func checkHealth(client *atunnels.Client) error {
 	}
 
 	if healthy {
-		fmt.Printf("%s %s\n", green("✓"), bold("Server is healthy"))
+		fmt.Printf("%s %s\n", green("✓"), bold(i18n.T("messages.server_healthy")))
 	} else {
-		fmt.Printf("%s %s\n", red("✗"), bold("Server is unhealthy"))
+		fmt.Printf("%s %s\n", red("✗"), bold(i18n.T("messages.server_unhealthy")))
 	}
 	return nil
 }
@@ -333,4 +381,81 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func installSkill() error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	skillDir := filepath.Join(homeDir, ".kilocode", "skills", "atunnels")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		return fmt.Errorf("failed to create skill directory: %w", err)
+	}
+
+	execPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("failed to get executable path: %w", err)
+	}
+
+	execDir := filepath.Dir(execPath)
+
+	searchPaths := []string{
+		filepath.Join(execDir, "skills", "atunnels.md"),
+		filepath.Join(execDir, "..", "skills", "atunnels.md"),
+		filepath.Join(execDir, "..", "..", "skills", "atunnels.md"),
+		"./skills/atunnels.md",
+		"skills/atunnels.md",
+	}
+
+	var skillSrc string
+	for _, p := range searchPaths {
+		absPath, err := filepath.Abs(p)
+		if err != nil {
+			continue
+		}
+
+		realPath, err := filepath.EvalSymlinks(absPath)
+		if err != nil {
+			continue
+		}
+
+		if _, err := os.Stat(realPath); err == nil {
+			if !isPathSafe(realPath, execDir) {
+				return fmt.Errorf("skill file is not in a safe location")
+			}
+			skillSrc = realPath
+			break
+		}
+	}
+
+	if skillSrc == "" {
+		return fmt.Errorf("skill file not found in any of: %v", searchPaths)
+	}
+
+	data, err := os.ReadFile(skillSrc)
+	if err != nil {
+		return fmt.Errorf("failed to read skill file: %w", err)
+	}
+
+	skillDst := filepath.Join(skillDir, "SKILL.md")
+	if err := os.WriteFile(skillDst, data, 0644); err != nil {
+		return fmt.Errorf("failed to write skill file: %w", err)
+	}
+
+	fmt.Printf("%s Skill installed to %s\n", green("✓"), cyan(skillDst))
+	return nil
+}
+
+func isPathSafe(path, baseDir string) bool {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	absBase, err := filepath.Abs(baseDir)
+	if err != nil {
+		return false
+	}
+	return strings.HasPrefix(absPath, absBase+string(filepath.Separator)) || absPath == absBase
 }

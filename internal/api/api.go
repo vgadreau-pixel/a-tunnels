@@ -30,6 +30,7 @@ func NewAPI(mgr tunnel.Manager, cfg *config.ServerConfig) *API {
 	router.Use(api.auth.Middleware)
 	router.HandleFunc("/health", api.handleHealth)
 	router.HandleFunc("/metrics", api.handleMetrics)
+	router.HandleFunc("/generate-name", api.handleGenerateName)
 
 	api.server = &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.APIPort),
@@ -52,6 +53,13 @@ func (a *API) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		stats := t.GetStats()
 		fmt.Fprintf(w, "atunnels_tunnel_requests{tunnel=\"%s\"} %d\n", t.Name, stats.TotalRequests)
 	}
+}
+
+func (a *API) handleGenerateName(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"name": tunnel.GenerateRandomName(),
+	})
 }
 
 func (a *API) Start() error {

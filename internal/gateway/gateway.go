@@ -129,6 +129,7 @@ type GatewayConfig struct {
 	AuthToken          string
 	RateLimit          int // Requests per time window
 	ShortenerRateLimit int // Requests per time window (typically lower)
+	ShortenerPeriod    int // Period for shortener rate limit (in minutes)
 	Shortener          GatewayShortenerConfig
 }
 
@@ -152,10 +153,16 @@ type ClientConnection struct {
 func NewGateway(cfg *GatewayConfig, mgr tunnel.Manager) *Gateway {
 	s := shortener.New()
 
-	// Default to 100/minute for general API requests and 20/hour for URL shortening
+	// Default to 100/minute for general API requests
 	rateWindow := time.Minute
 	if cfg.Shortener.Enabled && cfg.Shortener.CleanupFreq > 0 {
 		rateWindow = time.Duration(cfg.Shortener.CleanupFreq) * time.Minute
+	}
+
+	// Use configurable shortener period from config, default to 1 hour
+	shortenerPeriod := time.Hour
+	if cfg.ShortenerPeriod > 0 {
+		shortenerPeriod = time.Duration(cfg.ShortenerPeriod) * time.Minute
 	}
 
 	g := &Gateway{
@@ -163,7 +170,7 @@ func NewGateway(cfg *GatewayConfig, mgr tunnel.Manager) *Gateway {
 		shortener:      s,
 		config:         cfg,
 		rateLimiter:    NewRateLimiter(cfg.RateLimit, rateWindow),
-		shortenLimiter: NewRateLimiter(cfg.ShortenerRateLimit, time.Hour), // Fewer creates per hour for shortening
+		shortenLimiter: NewRateLimiter(cfg.ShortenerRateLimit, shortenerPeriod),
 		connections:    make(map[string]*ClientConnection),
 	}
 
@@ -177,10 +184,16 @@ func NewGateway(cfg *GatewayConfig, mgr tunnel.Manager) *Gateway {
 func NewGatewayWithStorage(cfg *GatewayConfig, mgr tunnel.Manager, storage shortener.Storage) *Gateway {
 	s := shortener.NewWithStorage(storage)
 
-	// Default to 100/minute for general API requests and 20/hour for URL shortening
+	// Default to 100/minute for general API requests
 	rateWindow := time.Minute
 	if cfg.Shortener.Enabled && cfg.Shortener.CleanupFreq > 0 {
 		rateWindow = time.Duration(cfg.Shortener.CleanupFreq) * time.Minute
+	}
+
+	// Use configurable shortener period from config, default to 1 hour
+	shortenerPeriod := time.Hour
+	if cfg.ShortenerPeriod > 0 {
+		shortenerPeriod = time.Duration(cfg.ShortenerPeriod) * time.Minute
 	}
 
 	g := &Gateway{
@@ -188,7 +201,7 @@ func NewGatewayWithStorage(cfg *GatewayConfig, mgr tunnel.Manager, storage short
 		shortener:      s,
 		config:         cfg,
 		rateLimiter:    NewRateLimiter(cfg.RateLimit, rateWindow),
-		shortenLimiter: NewRateLimiter(cfg.ShortenerRateLimit, time.Hour), // Fewer creates per hour for shortening
+		shortenLimiter: NewRateLimiter(cfg.ShortenerRateLimit, shortenerPeriod),
 		connections:    make(map[string]*ClientConnection),
 	}
 
@@ -216,8 +229,8 @@ func (g *Gateway) StartHTTP(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", g.handleHTTPRequestRateLimited) // Use rate-limited version
 	mux.HandleFunc("/health", g.handleHealth)
-	mux.HandleFunc("/metrics", g.handleMetricsRateLimited)     // Protect metrics with rate limiting
-	mux.HandleFunc("/s/", g.handleShortURLRedirectRateLimited) // Use rate-limited redirect
+	mux.HandleFunc("/metrics", g.handleMetricsRateLimited)                           // Protect metrics with rate limiting
+	mux.HandleFunc(g.config.Shortener.BasePath, g.handleShortURLRedirectRateLimited) // Use configurable base_path
 	mux.HandleFunc("/api/shorten", g.handleShortenURL)
 
 	g.httpServer = &http.Server{
@@ -244,8 +257,8 @@ func (g *Gateway) StartHTTPS(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", g.handleHTTPRequestRateLimited) // Use rate-limited version
 	mux.HandleFunc("/health", g.handleHealth)
-	mux.HandleFunc("/metrics", g.handleMetricsRateLimited)     // Protect metrics with rate limiting
-	mux.HandleFunc("/s/", g.handleShortURLRedirectRateLimited) // Use rate-limited redirect
+	mux.HandleFunc("/metrics", g.handleMetricsRateLimited)                           // Protect metrics with rate limiting
+	mux.HandleFunc(g.config.Shortener.BasePath, g.handleShortURLRedirectRateLimited) // Use configurable base_path
 	mux.HandleFunc("/api/shorten", g.handleShortenURL)
 
 	g.httpsServer = &http.Server{
@@ -493,7 +506,7 @@ func (g *Gateway) handleMetrics(w http.ResponseWriter, r *http.Request) {
 }
 
 func (g *Gateway) handleShortURLRedirect(w http.ResponseWriter, r *http.Request) {
-	code := strings.TrimPrefix(r.URL.Path, "/s/")
+	code := strings.TrimPrefix(r.URL.Path, g.config.Shortener.BasePath)
 	if code == "" {
 		http.NotFound(w, r)
 		return
