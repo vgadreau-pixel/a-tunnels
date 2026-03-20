@@ -32,11 +32,12 @@ type Tunnel struct {
 type TunnelStatus string
 
 const (
-	TunnelStatusPending TunnelStatus = "pending"
-	TunnelStatusActive  TunnelStatus = "active"
-	TunnelStatusPaused  TunnelStatus = "paused"
-	TunnelStatusError   TunnelStatus = "error"
-	TunnelStatusStopped TunnelStatus = "stopped"
+	TunnelStatusPending  TunnelStatus = "pending"
+	TunnelStatusActive   TunnelStatus = "active"
+	TunnelStatusPaused   TunnelStatus = "paused"
+	TunnelStatusError    TunnelStatus = "error"
+	TunnelStatusStopped  TunnelStatus = "stopped"
+	TunnelStatusDisabled TunnelStatus = "disabled"
 )
 
 type TunnelStats struct {
@@ -65,6 +66,8 @@ type Manager interface {
 	Start(id string) error
 	Stop(id string) error
 	Restart(id string) error
+	Disable(id string) error
+	Enable(id string) error
 	UpdateStats(id string, conns int64, bytesIn, bytesOut int64)
 	GetStats(id string) (*TunnelStats, error)
 	Subscribe() chan *TunnelEvent
@@ -280,6 +283,40 @@ func (m *manager) Restart(id string) error {
 		return err
 	}
 	return m.Start(id)
+}
+
+func (m *manager) Disable(id string) error {
+	tunnel, err := m.Get(id)
+	if err != nil {
+		return err
+	}
+
+	tunnel.SetStatus(TunnelStatusDisabled)
+
+	m.emit(&TunnelEvent{
+		Type:    "disabled",
+		Tunnel:  tunnel,
+		Message: fmt.Sprintf("Tunnel %s disabled due to inactivity", tunnel.Name),
+	})
+
+	return nil
+}
+
+func (m *manager) Enable(id string) error {
+	tunnel, err := m.Get(id)
+	if err != nil {
+		return err
+	}
+
+	tunnel.SetStatus(TunnelStatusActive)
+
+	m.emit(&TunnelEvent{
+		Type:    "enabled",
+		Tunnel:  tunnel,
+		Message: fmt.Sprintf("Tunnel %s enabled", tunnel.Name),
+	})
+
+	return nil
 }
 
 func (m *manager) UpdateStats(id string, conns int64, bytesIn, bytesOut int64) {

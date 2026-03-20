@@ -132,7 +132,22 @@ func (c *Client) RestartTunnel(name string) error {
 func (c *Client) Health() (bool, error) {
 	data, err := c.doRequest("GET", "/health", nil)
 	if err != nil {
-		return false, err
+		return false, nil
 	}
 	return bytes.Contains(data, []byte("ok")), nil
+}
+
+func (c *Client) GenerateName() (string, error) {
+	data, err := c.doRequest("GET", "/generate-name", nil)
+	if err != nil {
+		return "", err
+	}
+
+	var resp struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return "", err
+	}
+	return resp.Name, nil
 }

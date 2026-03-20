@@ -111,7 +111,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, bold(yellow("Commands:")))
 	fmt.Fprintln(os.Stderr, bold("  list, ls            "), dim("List all tunnels"))
 	fmt.Fprintln(os.Stderr, bold("  get <name>          "), dim("Get tunnel details"))
-	fmt.Fprintln(os.Stderr, bold("  create <name> <proto> <addr>  "), dim("Create tunnel"))
+	fmt.Fprintln(os.Stderr, bold("  create [name] <proto> <addr>"), dim("Create tunnel (name is optional)"))
 	fmt.Fprintln(os.Stderr, bold("  delete, rm <name>  "), dim("Delete tunnel"))
 	fmt.Fprintln(os.Stderr, bold("  stats <name>        "), dim("Get tunnel statistics"))
 	fmt.Fprintln(os.Stderr, bold("  restart <name>      "), dim("Restart tunnel"))
@@ -203,13 +203,25 @@ func getTunnel(client *atunnels.Client, args []string) error {
 }
 
 func createTunnel(client *atunnels.Client, args []string) error {
-	if len(args) < 3 {
-		return fmt.Errorf("usage: create <name> <protocol> <localAddr>")
+	if len(args) < 2 {
+		return fmt.Errorf("usage: create [name] <protocol> <localAddr>")
 	}
 
-	name := args[0]
-	protocol := args[1]
-	localAddr := args[2]
+	var name, protocol, localAddr string
+
+	if len(args) == 2 {
+		generatedName, err := client.GenerateName()
+		if err != nil {
+			return fmt.Errorf("failed to generate name: %w", err)
+		}
+		name = generatedName
+		protocol = args[0]
+		localAddr = args[1]
+	} else {
+		name = args[0]
+		protocol = args[1]
+		localAddr = args[2]
+	}
 
 	tunnel, err := client.CreateTunnel(&atunnels.Tunnel{
 		Name:      name,

@@ -10,6 +10,11 @@ server:
   domain: "your-domain.com"
   metrics_enabled: true
 
+  cleanup_enabled: true
+  cleanup_interval: "1h"        # How often to run cleanup
+  disable_after: "720h"         # Disable after 30 days of inactivity
+  delete_after: "8760h"        # Delete after 1 year of inactivity
+
   tls:
     enabled: true
     email: "admin@your-domain.com"

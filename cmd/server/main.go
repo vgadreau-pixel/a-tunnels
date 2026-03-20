@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/a-tunnels/a-tunnels/internal/api"
 	"github.com/a-tunnels/a-tunnels/internal/config"
@@ -143,6 +144,11 @@ func main() {
 
 	log.Printf("All services started successfully")
 
+	// Start cleanup goroutine if enabled
+	if cfg.Server.CleanupEnabled {
+		go runCleanup(ctx, tunnelMgr, &cfg.Server)
+	}
+
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	<-sigCh
@@ -164,4 +170,60 @@ func loadConfig(path string) (*config.Config, error) {
 		return config.LoadDefault(), nil
 	}
 	return config.Load(path)
+}
+
+func runCleanup(ctx context.Context, mgr tunnel.Manager, cfg *config.ServerConfig) {
+	interval := cfg.CleanupInterval
+	if interval <= 0 {
+		interval = 1 * time.Hour
+	}
+	if cfg.DisableAfter <= 0 {
+		cfg.DisableAfter = 30 * 24 * time.Hour // default 1 month
+	}
+	if cfg.DeleteAfter <= 0 {
+		cfg.DeleteAfter = 365 * 24 * time.Hour // default 1 year
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("Cleanup goroutine stopped")
+			return
+		case <-ticker.C:
+			runCleanupOnce(mgr, cfg)
+		}
+	}
+}
+
+func runCleanupOnce(mgr tunnel.Manager, cfg *config.ServerConfig) {
+	tunnels := mgr.List()
+	now := time.Now()
+
+	for _, t := range tunnels {
+		if t.Status == tunnel.TunnelStatusDisabled {
+			continue
+		}
+
+		lastReq := t.Stats.LastRequestAt
+		if lastReq.IsZero() {
+			lastReq = t.CreatedAt
+		}
+
+		inactive := now.Sub(lastReq)
+
+		if inactive >= cfg.DeleteAfter {
+			log.Printf("Cleaning up: deleting tunnel %s (inactive for %v)", t.Name, inactive)
+			if err := mgr.Delete(t.ID); err != nil {
+				log.Printf("Failed to delete tunnel %s: %v", t.Name, err)
+			}
+		} else if inactive >= cfg.DisableAfter {
+			log.Printf("Cleaning up: disabling tunnel %s (inactive for %v)", t.Name, inactive)
+			if err := mgr.Disable(t.ID); err != nil {
+				log.Printf("Failed to disable tunnel %s: %v", t.Name, err)
+			}
+		}
+	}
 }

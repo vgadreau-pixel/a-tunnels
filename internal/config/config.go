@@ -39,6 +39,12 @@ type ServerConfig struct {
 	APIEnabled   bool `yaml:"api_enabled"`
 	SSHEnabled   bool `yaml:"ssh_enabled"`
 	MCPEnabled   bool `yaml:"mcp_enabled"`
+
+	// Auto cleanup - disable after X, delete after Y
+	CleanupEnabled  bool          `yaml:"cleanup_enabled"`
+	CleanupInterval time.Duration `yaml:"cleanup_interval"` // How often to run cleanup
+	DisableAfter    time.Duration `yaml:"disable_after"`    // Disable tunnel after this inactivity
+	DeleteAfter     time.Duration `yaml:"delete_after"`     // Delete tunnel after this inactivity
 }
 
 type TLSConfig struct {
@@ -206,6 +212,16 @@ func (c *Config) setDefaults() {
 	}
 	if !c.Server.MCPEnabled {
 		c.Server.MCPEnabled = true
+	}
+	// Cleanup defaults
+	if c.Server.CleanupInterval == 0 {
+		c.Server.CleanupInterval = 1 * time.Hour
+	}
+	if c.Server.DisableAfter == 0 {
+		c.Server.DisableAfter = 30 * 24 * time.Hour // 1 month
+	}
+	if c.Server.DeleteAfter == 0 {
+		c.Server.DeleteAfter = 365 * 24 * time.Hour // 1 year
 	}
 	if c.Client.ReconnectInterval == 0 {
 		c.Client.ReconnectInterval = 5 * time.Second
