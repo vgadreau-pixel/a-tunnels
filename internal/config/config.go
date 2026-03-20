@@ -30,6 +30,15 @@ type ServerConfig struct {
 	Limits         LimitsConfig    `yaml:"limits"`
 	Domain         string          `yaml:"domain"`
 	MetricsEnabled bool            `yaml:"metrics_enabled"`
+
+	// Server modes - set to false to disable
+	HTTPEnabled  bool `yaml:"http_enabled"`
+	HTTPSEnabled bool `yaml:"https_enabled"`
+	TCPEnabled   bool `yaml:"tcp_enabled"`
+	WSEnabled    bool `yaml:"ws_enabled"`
+	APIEnabled   bool `yaml:"api_enabled"`
+	SSHEnabled   bool `yaml:"ssh_enabled"`
+	MCPEnabled   bool `yaml:"mcp_enabled"`
 }
 
 type TLSConfig struct {
@@ -175,6 +184,28 @@ func (c *Config) setDefaults() {
 	}
 	if c.Server.Limits.RateLimitPeriod == 0 {
 		c.Server.Limits.RateLimitPeriod = 60
+	}
+	// Server modes - all enabled by default
+	if !c.Server.HTTPEnabled {
+		c.Server.HTTPEnabled = true
+	}
+	if !c.Server.HTTPSEnabled {
+		c.Server.HTTPSEnabled = true
+	}
+	if !c.Server.TCPEnabled {
+		c.Server.TCPEnabled = true
+	}
+	if !c.Server.WSEnabled {
+		c.Server.WSEnabled = true
+	}
+	if !c.Server.APIEnabled {
+		c.Server.APIEnabled = true
+	}
+	if !c.Server.SSHEnabled {
+		c.Server.SSHEnabled = true
+	}
+	if !c.Server.MCPEnabled {
+		c.Server.MCPEnabled = true
 	}
 	if c.Client.ReconnectInterval == 0 {
 		c.Client.ReconnectInterval = 5 * time.Second

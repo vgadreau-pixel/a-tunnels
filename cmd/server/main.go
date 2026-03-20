@@ -80,38 +80,66 @@ func main() {
 		},
 	}, tunnelMgr, shortenerStorage)
 
-	if err := gw.StartHTTP(ctx); err != nil {
-		log.Printf("HTTP gateway failed: %v", err)
+	// Start HTTP gateway if enabled
+	if cfg.Server.HTTPEnabled {
+		if err := gw.StartHTTP(ctx); err != nil {
+			log.Printf("HTTP gateway failed: %v", err)
+		}
 	}
 
-	if err := gw.StartTCP(ctx); err != nil {
-		log.Printf("TCP gateway failed: %v", err)
+	// Start HTTPS gateway if enabled
+	if cfg.Server.HTTPSEnabled {
+		if err := gw.StartHTTPS(ctx); err != nil {
+			log.Printf("HTTPS gateway failed: %v", err)
+		}
 	}
 
-	if err := gw.StartWebSocket(ctx); err != nil {
-		log.Printf("WebSocket gateway failed: %v", err)
+	// Start TCP gateway if enabled
+	if cfg.Server.TCPEnabled {
+		if err := gw.StartTCP(ctx); err != nil {
+			log.Printf("TCP gateway failed: %v", err)
+		}
 	}
 
-	apiServer := api.NewAPI(tunnelMgr, &cfg.Server)
-	go func() {
-		if err := apiServer.Start(); err != nil {
-			log.Printf("API server error: %v", err)
+	// Start WebSocket gateway if enabled
+	if cfg.Server.WSEnabled {
+		if err := gw.StartWebSocket(ctx); err != nil {
+			log.Printf("WebSocket gateway failed: %v", err)
 		}
-	}()
+	}
 
-	mcpServer := mcp.NewServer(fmt.Sprintf(":%d", cfg.Server.MCPPort), tunnelMgr, cfg.Server.MCPToken)
-	go func() {
-		if err := mcpServer.Start(); err != nil {
-			log.Printf("MCP server error: %v", err)
-		}
-	}()
+	// Start API server if enabled
+	var apiServer *api.API
+	if cfg.Server.APIEnabled {
+		apiServer = api.NewAPI(tunnelMgr, &cfg.Server)
+		go func() {
+			if err := apiServer.Start(); err != nil {
+				log.Printf("API server error: %v", err)
+			}
+		}()
+	}
 
-	sshServer := ssh.NewServer(fmt.Sprintf(":%d", cfg.Server.SSHPort), &cfg.Server, tunnelMgr)
-	go func() {
-		if err := sshServer.Start(); err != nil {
-			log.Printf("SSH server error: %v", err)
-		}
-	}()
+	// Start MCP server if enabled
+	var mcpServer *mcp.Server
+	if cfg.Server.MCPEnabled {
+		mcpServer = mcp.NewServer(fmt.Sprintf(":%d", cfg.Server.MCPPort), tunnelMgr, cfg.Server.MCPToken)
+		go func() {
+			if err := mcpServer.Start(); err != nil {
+				log.Printf("MCP server error: %v", err)
+			}
+		}()
+	}
+
+	// Start SSH server if enabled
+	var sshServer *ssh.Server
+	if cfg.Server.SSHEnabled {
+		sshServer = ssh.NewServer(fmt.Sprintf(":%d", cfg.Server.SSHPort), &cfg.Server, tunnelMgr)
+		go func() {
+			if err := sshServer.Start(); err != nil {
+				log.Printf("SSH server error: %v", err)
+			}
+		}()
+	}
 
 	log.Printf("All services started successfully")
 
@@ -122,8 +150,12 @@ func main() {
 	log.Println("Shutting down...")
 	cancel()
 	gw.Stop()
-	apiServer.Stop()
-	mcpServer.Stop()
+	if apiServer != nil {
+		apiServer.Stop()
+	}
+	if mcpServer != nil {
+		mcpServer.Stop()
+	}
 	log.Println("Server stopped")
 }
 
