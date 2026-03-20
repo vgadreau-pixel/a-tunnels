@@ -399,10 +399,12 @@ func installSkill() error {
 		return fmt.Errorf("failed to get executable path: %w", err)
 	}
 
+	execDir := filepath.Dir(execPath)
+
 	searchPaths := []string{
-		filepath.Join(filepath.Dir(execPath), "skills", "atunnels.md"),
-		filepath.Join(filepath.Dir(execPath), "..", "skills", "atunnels.md"),
-		filepath.Join(filepath.Dir(execPath), "..", "..", "skills", "atunnels.md"),
+		filepath.Join(execDir, "skills", "atunnels.md"),
+		filepath.Join(execDir, "..", "skills", "atunnels.md"),
+		filepath.Join(execDir, "..", "..", "skills", "atunnels.md"),
 		"./skills/atunnels.md",
 		"skills/atunnels.md",
 	}
@@ -413,8 +415,17 @@ func installSkill() error {
 		if err != nil {
 			continue
 		}
-		if _, err := os.Stat(absPath); err == nil {
-			skillSrc = absPath
+
+		realPath, err := filepath.EvalSymlinks(absPath)
+		if err != nil {
+			continue
+		}
+
+		if _, err := os.Stat(realPath); err == nil {
+			if !isPathSafe(realPath, execDir) {
+				return fmt.Errorf("skill file is not in a safe location")
+			}
+			skillSrc = realPath
 			break
 		}
 	}
@@ -435,4 +446,16 @@ func installSkill() error {
 
 	fmt.Printf("%s Skill installed to %s\n", green("✓"), cyan(skillDst))
 	return nil
+}
+
+func isPathSafe(path, baseDir string) bool {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	absBase, err := filepath.Abs(baseDir)
+	if err != nil {
+		return false
+	}
+	return strings.HasPrefix(absPath, absBase+string(filepath.Separator)) || absPath == absBase
 }

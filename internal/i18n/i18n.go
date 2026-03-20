@@ -2,7 +2,6 @@ package i18n
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,13 +46,11 @@ func loadLocale(lang string) {
 		data, err = os.ReadFile(filepath.Join("locales", lang+".json"))
 	}
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not load locale %s: %v\n", lang, err)
 		return
 	}
 
 	var locale Locale
 	if err := json.Unmarshal(data, &locale); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not parse locale %s: %v\n", lang, err)
 		return
 	}
 

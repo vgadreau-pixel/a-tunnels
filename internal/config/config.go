@@ -7,6 +7,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+func newBool(b bool) *bool {
+	return &b
+}
+
 type Config struct {
 	Server  ServerConfig   `yaml:"server"`
 	Client  ClientConfig   `yaml:"client,omitempty"`
@@ -32,16 +36,17 @@ type ServerConfig struct {
 	MetricsEnabled bool            `yaml:"metrics_enabled"`
 
 	// Server modes - set to false to disable
-	HTTPEnabled  bool `yaml:"http_enabled"`
-	HTTPSEnabled bool `yaml:"https_enabled"`
-	TCPEnabled   bool `yaml:"tcp_enabled"`
-	WSEnabled    bool `yaml:"ws_enabled"`
-	APIEnabled   bool `yaml:"api_enabled"`
-	SSHEnabled   bool `yaml:"ssh_enabled"`
-	MCPEnabled   bool `yaml:"mcp_enabled"`
+	// Use pointers to distinguish "not set" from "explicitly set to false"
+	HTTPEnabled  *bool `yaml:"http_enabled"`
+	HTTPSEnabled *bool `yaml:"https_enabled"`
+	TCPEnabled   *bool `yaml:"tcp_enabled"`
+	WSEnabled    *bool `yaml:"ws_enabled"`
+	APIEnabled   *bool `yaml:"api_enabled"`
+	SSHEnabled   *bool `yaml:"ssh_enabled"`
+	MCPEnabled   *bool `yaml:"mcp_enabled"`
 
 	// Auto cleanup - disable after X, delete after Y
-	CleanupEnabled  bool          `yaml:"cleanup_enabled"`
+	CleanupEnabled  *bool         `yaml:"cleanup_enabled"`
 	CleanupInterval time.Duration `yaml:"cleanup_interval"` // How often to run cleanup
 	DisableAfter    time.Duration `yaml:"disable_after"`    // Disable tunnel after this inactivity
 	DeleteAfter     time.Duration `yaml:"delete_after"`     // Delete tunnel after this inactivity
@@ -191,29 +196,32 @@ func (c *Config) setDefaults() {
 	if c.Server.Limits.RateLimitPeriod == 0 {
 		c.Server.Limits.RateLimitPeriod = 60
 	}
-	// Server modes - all enabled by default
-	if !c.Server.HTTPEnabled {
-		c.Server.HTTPEnabled = true
+	// Server modes - all enabled by default (only if not explicitly set)
+	if c.Server.HTTPEnabled == nil {
+		c.Server.HTTPEnabled = newBool(true)
 	}
-	if !c.Server.HTTPSEnabled {
-		c.Server.HTTPSEnabled = true
+	if c.Server.HTTPSEnabled == nil {
+		c.Server.HTTPSEnabled = newBool(true)
 	}
-	if !c.Server.TCPEnabled {
-		c.Server.TCPEnabled = true
+	if c.Server.TCPEnabled == nil {
+		c.Server.TCPEnabled = newBool(true)
 	}
-	if !c.Server.WSEnabled {
-		c.Server.WSEnabled = true
+	if c.Server.WSEnabled == nil {
+		c.Server.WSEnabled = newBool(true)
 	}
-	if !c.Server.APIEnabled {
-		c.Server.APIEnabled = true
+	if c.Server.APIEnabled == nil {
+		c.Server.APIEnabled = newBool(true)
 	}
-	if !c.Server.SSHEnabled {
-		c.Server.SSHEnabled = true
+	if c.Server.SSHEnabled == nil {
+		c.Server.SSHEnabled = newBool(true)
 	}
-	if !c.Server.MCPEnabled {
-		c.Server.MCPEnabled = true
+	if c.Server.MCPEnabled == nil {
+		c.Server.MCPEnabled = newBool(true)
 	}
-	// Cleanup defaults
+	// Cleanup defaults - disabled by default
+	if c.Server.CleanupEnabled == nil {
+		c.Server.CleanupEnabled = newBool(false)
+	}
 	if c.Server.CleanupInterval == 0 {
 		c.Server.CleanupInterval = 1 * time.Hour
 	}
