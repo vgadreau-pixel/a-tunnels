@@ -1,0 +1,90 @@
+{
+  "app": {
+    "name": "A-Tunnels",
+    "version": "Version"
+  },
+  "commands": {
+    "list": "List tunnels",
+    "get": "Get tunnel details",
+    "create": "Create tunnel",
+    "delete": "Delete tunnel",
+    "stats": "Get tunnel statistics",
+    "restart": "Restart tunnel",
+    "logs": "Get tunnel logs",
+    "health": "Check server health"
+  },
+  "usage": {
+    "title": "Usage:",
+    "example": "Examples:"
+  },
+  "options": {
+    "server": "Server URL",
+    "token": "API token",
+    "json": "Output JSON",
+    "no_color": "Disable colors",
+    "lang": "Language (en, fr, es)"
+  },
+  "errors": {
+    "token_required": "Token required (use -token or ATUNNELS_TOKEN)",
+    "unknown_command": "Unknown command",
+    "tunnel_not_found": "Tunnel not found",
+    "create_usage": "Usage: create [name] <protocol> <localAddr>",
+    "delete_usage": "Usage: delete <name>",
+    "stats_usage": "Usage: stats <name>",
+    "get_usage": "Usage: get <name>",
+    "failed_to_generate_name": "Failed to generate name"
+  },
+  "tunnel": {
+    "created": "Tunnel created",
+    "deleted": "Tunnel deleted",
+    "restarted": "Tunnel restarted",
+    "name": "Name",
+    "id": "ID",
+    "protocol": "Protocol",
+    "local_addr": "Local Address",
+    "status": "Status",
+    "subdomain": "Subdomain",
+    "active_connections": "Active Connections",
+    "total_requests": "Total Requests",
+    "total_bytes_in": "Total Bytes In",
+    "total_bytes_out": "Total Bytes Out"
+  },
+  "status": {
+    "pending": "pending",
+    "active": "active",
+    "paused": "paused",
+    "error": "error",
+    "stopped": "stopped",
+    "disabled": "disabled"
+  },
+  "messages": {
+    "no_tunnels": "No tunnels",
+    "checking_health": "Checking health...",
+    "server_healthy": "Server is healthy",
+    "server_unhealthy": "Server is unhealthy"
+  },
+  "cli": {
+    "help": "Display help",
+    "version": "Display version"
+  },
+  "server": {
+    "starting": "Starting A-Tunnels Server",
+    "all_started": "All services started successfully",
+    "shutting_down": "Shutting down...",
+    "stopped": "Server stopped",
+    "failed_to_load_config": "Failed to load config",
+    "shortener_storage_failed": "Failed to create shortener file storage, using memory storage",
+    "http_failed": "HTTP gateway failed",
+    "https_failed": "HTTPS gateway failed",
+    "tcp_failed": "TCP gateway failed",
+    "ws_failed": "WebSocket gateway failed",
+    "api_failed": "API server error",
+    "mcp_failed": "MCP server error",
+    "ssh_failed": "SSH server error",
+    "cleanup_stopped": "Cleanup goroutine stopped",
+    "cleanup_deleting": "Cleaning up: deleting tunnel",
+    "cleanup_disable": "Cleaning up: disabling tunnel",
+    "cleanup_delete_failed": "Failed to delete tunnel",
+    "cleanup_disable_failed": "Failed to disable tunnel"
+  }
+}

@@ -14,6 +14,7 @@ import (
 	"github.com/a-tunnels/a-tunnels/internal/api"
 	"github.com/a-tunnels/a-tunnels/internal/config"
 	"github.com/a-tunnels/a-tunnels/internal/gateway"
+	"github.com/a-tunnels/a-tunnels/internal/i18n"
 	"github.com/a-tunnels/a-tunnels/internal/mcp"
 	"github.com/a-tunnels/a-tunnels/internal/shortener"
 	"github.com/a-tunnels/a-tunnels/internal/ssh"
@@ -29,7 +30,13 @@ var (
 func main() {
 	configPath := flag.String("config", "atunnels.yml", "Path to configuration file")
 	showVersion := flag.Bool("version", false, "Show version information")
+	lang := flag.String("lang", "", "Language (en, fr, es)")
 	flag.Parse()
+
+	i18n.Init()
+	if *lang != "" {
+		i18n.SetLang(*lang)
+	}
 
 	if *showVersion {
 		fmt.Printf("A-Tunnels Server v%s (commit: %s, built: %s)\n", version, commit, buildTime)
@@ -38,10 +45,10 @@ func main() {
 
 	cfg, err := loadConfig(*configPath)
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		log.Fatalf(i18n.TServer("failed_to_load_config")+": %v", err)
 	}
 
-	log.Printf("Starting A-Tunnels Server v%s", version)
+	log.Printf(i18n.TServer("starting")+" v%s", version)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -55,7 +62,7 @@ func main() {
 			shortenerPath := filepath.Join(filepath.Dir(cfg.Server.Storage.Path), "shortener.json")
 			storage, err := shortener.NewFileStorage(shortenerPath)
 			if err != nil {
-				log.Printf("Failed to create shortener file storage: %v, using memory storage", err)
+				log.Printf(i18n.TServer("shortener_storage_failed")+": %v", err)
 			} else {
 				shortenerStorage = storage
 			}
@@ -84,28 +91,28 @@ func main() {
 	// Start HTTP gateway if enabled
 	if cfg.Server.HTTPEnabled {
 		if err := gw.StartHTTP(ctx); err != nil {
-			log.Printf("HTTP gateway failed: %v", err)
+			log.Printf(i18n.TServer("http_failed")+": %v", err)
 		}
 	}
 
 	// Start HTTPS gateway if enabled
 	if cfg.Server.HTTPSEnabled {
 		if err := gw.StartHTTPS(ctx); err != nil {
-			log.Printf("HTTPS gateway failed: %v", err)
+			log.Printf(i18n.TServer("https_failed")+": %v", err)
 		}
 	}
 
 	// Start TCP gateway if enabled
 	if cfg.Server.TCPEnabled {
 		if err := gw.StartTCP(ctx); err != nil {
-			log.Printf("TCP gateway failed: %v", err)
+			log.Printf(i18n.TServer("tcp_failed")+": %v", err)
 		}
 	}
 
 	// Start WebSocket gateway if enabled
 	if cfg.Server.WSEnabled {
 		if err := gw.StartWebSocket(ctx); err != nil {
-			log.Printf("WebSocket gateway failed: %v", err)
+			log.Printf(i18n.TServer("ws_failed")+": %v", err)
 		}
 	}
 
@@ -115,7 +122,7 @@ func main() {
 		apiServer = api.NewAPI(tunnelMgr, &cfg.Server)
 		go func() {
 			if err := apiServer.Start(); err != nil {
-				log.Printf("API server error: %v", err)
+				log.Printf(i18n.TServer("api_failed")+": %v", err)
 			}
 		}()
 	}
@@ -126,7 +133,7 @@ func main() {
 		mcpServer = mcp.NewServer(fmt.Sprintf(":%d", cfg.Server.MCPPort), tunnelMgr, cfg.Server.MCPToken)
 		go func() {
 			if err := mcpServer.Start(); err != nil {
-				log.Printf("MCP server error: %v", err)
+				log.Printf(i18n.TServer("mcp_failed")+": %v", err)
 			}
 		}()
 	}
@@ -137,12 +144,12 @@ func main() {
 		sshServer = ssh.NewServer(fmt.Sprintf(":%d", cfg.Server.SSHPort), &cfg.Server, tunnelMgr)
 		go func() {
 			if err := sshServer.Start(); err != nil {
-				log.Printf("SSH server error: %v", err)
+				log.Printf(i18n.TServer("ssh_failed")+": %v", err)
 			}
 		}()
 	}
 
-	log.Printf("All services started successfully")
+	log.Printf(i18n.TServer("all_started"))
 
 	// Start cleanup goroutine if enabled
 	if cfg.Server.CleanupEnabled {
@@ -153,7 +160,7 @@ func main() {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	<-sigCh
 
-	log.Println("Shutting down...")
+	log.Println(i18n.TServer("shutting_down"))
 	cancel()
 	gw.Stop()
 	if apiServer != nil {
@@ -190,7 +197,7 @@ func runCleanup(ctx context.Context, mgr tunnel.Manager, cfg *config.ServerConfi
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("Cleanup goroutine stopped")
+			log.Println(i18n.TServer("cleanup_stopped"))
 			return
 		case <-ticker.C:
 			runCleanupOnce(mgr, cfg)
@@ -215,14 +222,14 @@ func runCleanupOnce(mgr tunnel.Manager, cfg *config.ServerConfig) {
 		inactive := now.Sub(lastReq)
 
 		if inactive >= cfg.DeleteAfter {
-			log.Printf("Cleaning up: deleting tunnel %s (inactive for %v)", t.Name, inactive)
+			log.Printf(i18n.TServer("cleanup_deleting")+" %s (inactive for %v)", t.Name, inactive)
 			if err := mgr.Delete(t.ID); err != nil {
-				log.Printf("Failed to delete tunnel %s: %v", t.Name, err)
+				log.Printf(i18n.TServer("cleanup_delete_failed")+" %s: %v", t.Name, err)
 			}
 		} else if inactive >= cfg.DisableAfter {
-			log.Printf("Cleaning up: disabling tunnel %s (inactive for %v)", t.Name, inactive)
+			log.Printf(i18n.TServer("cleanup_disable")+" %s (inactive for %v)", t.Name, inactive)
 			if err := mgr.Disable(t.ID); err != nil {
-				log.Printf("Failed to disable tunnel %s: %v", t.Name, err)
+				log.Printf(i18n.TServer("cleanup_disable_failed")+" %s: %v", t.Name, err)
 			}
 		}
 	}

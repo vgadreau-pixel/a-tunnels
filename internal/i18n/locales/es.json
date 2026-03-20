@@ -1,0 +1,90 @@
+{
+  "app": {
+    "name": "A-Tunnels",
+    "version": "Versión"
+  },
+  "commands": {
+    "list": "Listar túneles",
+    "get": "Ver detalles del túnel",
+    "create": "Crear túnel",
+    "delete": "Eliminar túnel",
+    "stats": "Ver estadísticas del túnel",
+    "restart": "Reiniciar túnel",
+    "logs": "Ver logs del túnel",
+    "health": "Verificar salud del servidor"
+  },
+  "usage": {
+    "title": "Uso:",
+    "example": "Ejemplos:"
+  },
+  "options": {
+    "server": "URL del servidor",
+    "token": "Token API",
+    "json": "Salida JSON",
+    "no_color": "Desactivar colores",
+    "lang": "Idioma (en, fr, es)"
+  },
+  "errors": {
+    "token_required": "Token requerido (use -token o ATUNNELS_TOKEN)",
+    "unknown_command": "Comando desconocido",
+    "tunnel_not_found": "Túnel no encontrado",
+    "create_usage": "Uso: create [nombre] <protocolo> <addr_local>",
+    "delete_usage": "Uso: delete <nombre>",
+    "stats_usage": "Uso: stats <nombre>",
+    "get_usage": "Uso: get <nombre>",
+    "failed_to_generate_name": "Error al generar el nombre"
+  },
+  "tunnel": {
+    "created": "Túnel creado",
+    "deleted": "Túnel eliminado",
+    "restarted": "Túnel reiniciado",
+    "name": "Nombre",
+    "id": "ID",
+    "protocol": "Protocolo",
+    "local_addr": "Dirección local",
+    "status": "Estado",
+    "subdomain": "Subdominio",
+    "active_connections": "Conexiones activas",
+    "total_requests": "Solicitudes totales",
+    "total_bytes_in": "Bytes recibidos",
+    "total_bytes_out": "Bytes enviados"
+  },
+  "status": {
+    "pending": "pendiente",
+    "active": "activo",
+    "paused": "pausado",
+    "error": "error",
+    "stopped": "detenido",
+    "disabled": "deshabilitado"
+  },
+  "messages": {
+    "no_tunnels": "Sin túneles",
+    "checking_health": "Verificando salud...",
+    "server_healthy": "El servidor está sano",
+    "server_unhealthy": "El servidor no está sano"
+  },
+  "cli": {
+    "help": "Mostrar ayuda",
+    "version": "Mostrar versión"
+  },
+  "server": {
+    "starting": "Iniciando servidor A-Tunnels",
+    "all_started": "Todos los servicios iniciados correctamente",
+    "shutting_down": "Apagando...",
+    "stopped": "Servidor detenido",
+    "failed_to_load_config": "Error al cargar la configuración",
+    "shortener_storage_failed": "Error al crear el almacenamiento del acortador, usando almacenamiento en memoria",
+    "http_failed": "Error de la pasarela HTTP",
+    "https_failed": "Error de la pasarela HTTPS",
+    "tcp_failed": "Error de la pasarela TCP",
+    "ws_failed": "Error de la pasarela WebSocket",
+    "api_failed": "Error del servidor API",
+    "mcp_failed": "Error del servidor MCP",
+    "ssh_failed": "Error del servidor SSH",
+    "cleanup_stopped": "Goroutine de limpieza detenida",
+    "cleanup_deleting": "Limpiando: eliminando túnel",
+    "cleanup_disable": "Limpiando: deshabilitando túnel",
+    "cleanup_delete_failed": "Error al eliminar el túnel",
+    "cleanup_disable_failed": "Error al deshabilitar el túnel"
+  }
+}
