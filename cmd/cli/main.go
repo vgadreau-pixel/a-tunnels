@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/a-tunnels/a-tunnels/internal/i18n"
@@ -59,19 +60,41 @@ func main() {
 		os.Exit(1)
 	}
 
-	if token == "" {
-		token = os.Getenv("ATUNNELS_TOKEN")
+	cmd := flag.Arg(0)
+	args := flag.Args()[1:]
+
+	noTokenCmds := map[string]bool{
+		"install-skill": true,
+		"skill":         true,
+		"help":          true,
+		"h":             true,
+		"-h":            true,
+		"--help":        true,
+		"version":       true,
+		"v":             true,
 	}
 
-	if token == "" {
-		fmt.Fprintln(os.Stderr, red("Error:"), i18n.TError("token_required"))
-		os.Exit(1)
+	if !noTokenCmds[cmd] {
+		if token == "" {
+			token = os.Getenv("ATUNNELS_TOKEN")
+		}
+
+		if token == "" {
+			fmt.Fprintln(os.Stderr, red("Error:"), i18n.TError("token_required"))
+			os.Exit(1)
+		}
+	}
+
+	if cmd == "install-skill" || cmd == "skill" {
+		if err := installSkill(); err != nil {
+			fmt.Fprintln(os.Stderr, red("Error:"), err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+		return
 	}
 
 	client := atunnels.NewClient(serverURL, token)
-
-	cmd := flag.Arg(0)
-	args := flag.Args()[1:]
 
 	var err error
 	switch cmd {
@@ -96,6 +119,8 @@ func main() {
 		err = checkHealth(client)
 	case "version", "v":
 		showVersion()
+	case "install-skill", "skill":
+		err = installSkill()
 	default:
 		fmt.Fprintf(os.Stderr, red(i18n.TError("unknown_command")+":"), " %s\n", cmd)
 		flag.Usage()
@@ -125,6 +150,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, bold("  restart <name>      "), dim(i18n.TCommand("restart")))
 	fmt.Fprintln(os.Stderr, bold("  logs <name>         "), dim(i18n.TCommand("logs")))
 	fmt.Fprintln(os.Stderr, bold("  health              "), dim(i18n.TCommand("health")))
+	fmt.Fprintln(os.Stderr, bold("  install-skill       "), dim("Install LLM skill for this tool"))
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, bold(yellow(i18n.T("options.server")+":")))
 	fmt.Fprintln(os.Stderr, bold("  -server URL         "), dim(i18n.T("options.server")+" (default: http://localhost:8080)"))
@@ -137,6 +163,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, dim("  a-tunnels -token xxx list"))
 	fmt.Fprintln(os.Stderr, dim("  a-tunnels -token xxx create webhook http localhost:3000"))
 	fmt.Fprintln(os.Stderr, dim("  a-tunnels -token xxx stats webhook"))
+	fmt.Fprintln(os.Stderr, dim("  a-tunnels install-skill"))
 }
 
 func showVersion() {
@@ -354,4 +381,58 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func installSkill() error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	skillDir := filepath.Join(homeDir, ".kilocode", "skills", "atunnels")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		return fmt.Errorf("failed to create skill directory: %w", err)
+	}
+
+	execPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("failed to get executable path: %w", err)
+	}
+
+	searchPaths := []string{
+		filepath.Join(filepath.Dir(execPath), "skills", "atunnels.md"),
+		filepath.Join(filepath.Dir(execPath), "..", "skills", "atunnels.md"),
+		filepath.Join(filepath.Dir(execPath), "..", "..", "skills", "atunnels.md"),
+		"./skills/atunnels.md",
+		"skills/atunnels.md",
+	}
+
+	var skillSrc string
+	for _, p := range searchPaths {
+		absPath, err := filepath.Abs(p)
+		if err != nil {
+			continue
+		}
+		if _, err := os.Stat(absPath); err == nil {
+			skillSrc = absPath
+			break
+		}
+	}
+
+	if skillSrc == "" {
+		return fmt.Errorf("skill file not found in any of: %v", searchPaths)
+	}
+
+	data, err := os.ReadFile(skillSrc)
+	if err != nil {
+		return fmt.Errorf("failed to read skill file: %w", err)
+	}
+
+	skillDst := filepath.Join(skillDir, "SKILL.md")
+	if err := os.WriteFile(skillDst, data, 0644); err != nil {
+		return fmt.Errorf("failed to write skill file: %w", err)
+	}
+
+	fmt.Printf("%s Skill installed to %s\n", green("✓"), cyan(skillDst))
+	return nil
 }
